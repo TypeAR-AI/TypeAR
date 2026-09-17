@@ -11,8 +11,9 @@ retraining, structured-output library, or manual KV-tensor management.
 2. **Negligible output-token cost.** Each decision generates exactly one token.
 3. **Linear input cost.** Prefix-cache reuse makes newly processed input grow
    approximately linearly with the unique context added across the workflow.
-4. **Decision dependencies.** Each later decision is conditioned on the values
-   selected by all previous decisions.
+4. **Sequential dependencies when needed.** In sequential mode, each later
+   decision is conditioned on all previous values; batch mode runs independent
+   decisions concurrently.
 5. **Made for open autoregressive LLMs.** TypeAR works with any compatible,
    pretrained open-source model served by SGLang.
 
