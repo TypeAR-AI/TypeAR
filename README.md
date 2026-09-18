@@ -99,13 +99,6 @@ earlier fields.
 
 ## Testing
 
-Run the unit tests locally; they use mock clients and do not require a GPU or a
-running SGLang server:
-
-```bash
-python3 -m unittest -v test_typear.py
-```
-
 To run the 128-case numeric regression, first serve `qwen3.8-27b` with SGLang
 at `http://127.0.0.1:30000`, then run:
 
