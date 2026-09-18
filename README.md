@@ -120,8 +120,8 @@ TypeAR supports both finite decisions and grammar-constrained numeric fields:
 | String choice | `{"type": "string", "enum": ["meal", "travel"]}` | `str` |
 | Integer choice | `{"type": "integer", "enum": [1, 2, 3]}` | `int` |
 | Number choice | `{"type": "number", "enum": [0.1, 0.5, 1.0]}` | `int` or `float` |
-| Open integer | `{"type": "integer"}` | `int` |
-| Open number | `{"type": "number"}` | `float` |
+| Integer | `{"type": "integer"}` | `int` |
+| Number | `{"type": "number"}` | `float` |
 | Boolean | `{"type": "boolean"}` | `bool` |
 
 Finite enums may contain at most 16 values.
