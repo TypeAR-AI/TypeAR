@@ -97,6 +97,27 @@ Python dictionary insertion order determines the decision order. Each later
 field is conditioned on the original context and the values selected for all
 earlier fields.
 
+## Testing
+
+Run the unit tests locally; they use mock clients and do not require a GPU or a
+running SGLang server:
+
+```bash
+python3 -m unittest -v test_typear.py
+```
+
+To run the 128-case numeric regression, first serve `qwen3.8-27b` with SGLang
+at `http://127.0.0.1:30000`, then run:
+
+```bash
+python3 _numeric_eval.py
+```
+
+The evaluation covers integer and number extraction, arithmetic, negative
+integers, and sequential dependencies. Its deterministic test cases are stored
+in `evals/numeric_eval_cases.jsonl`; the script writes detailed results to
+`evals/numeric_eval_formal_results.jsonl` and prints an aggregate summary.
+
 ## Supported schema
 
 TypeAR supports both finite decisions and grammar-constrained numeric fields:
