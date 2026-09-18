@@ -140,40 +140,6 @@ If `question` is absent, TypeAR uses the standard JSON Schema `description`,
 then falls back to an instruction generated from the field name. The older
 `x-question` spelling remains accepted for compatibility.
 
-## Numeric domains
-
-Ordinary TypeAR decisions come from finite sets because single-token control
-labels can cover an enum or a Boolean. For integer and number fields without an
-enum, TypeAR scans the served model's tokenizer once and caches every token that
-can participate in a number. At each step it scores all tokenizer-native pieces
-that legally extend the current numeric prefix. A model may therefore emit
-`"5"`, `"54"`, or `"5461"` in one step without losing probability assigned to
-multi-character numeric tokens.
-
-```python
-"answer": {
-    "type": "number",
-    "question": "What is 17.5 multiplied by 4?",
-}
-```
-
-The assistant emits the number directly and may select the model's native
-end-of-message token only after a valid number exists. Returned values are real
-Python `int` and `float` objects, not strings. `minimum` and `maximum` are
-optional standard JSON Schema constraints; when supplied, TypeAR validates the
-completed value against them.
-`numeric_max_digits` defaults to 32. Scientific notation is not currently
-accepted. When `return_probabilities=True`, an open numeric field returns
-`"probabilities": None`, because it has no finite final-value domain.
-
-The numeric-token table is derived from the tokenizer reported by SGLang and
-stored under `~/.cache/typear/numeric_tokens`. Its cache key is the tokenizer
-content hash, so it is reused across questions and rebuilt after a tokenizer
-change. TypeAR also uses the tokenizer's native chat template with thinking
-disabled for constrained decisions. If the server reports a path that exists
-only on the remote host, pass the equivalent local path or Hugging Face ID as
-`TypeARClient(tokenizer="...")`.
-
 ## Sequential and batch execution
 
 Sequential execution is the default:
