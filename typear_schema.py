@@ -1,4 +1,4 @@
-"""Compilation and validation for TypeAR's finite JSON Schema subset."""
+"""Compilation for TypeAR's finite schema subset plus explicit open strings."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ class Decision:
     question: str
     choices: tuple[Any, ...]
     syntax: str = "Choice"
+    allow_other: bool = False
 
 
 def _has_duplicates(values: Sequence[Any]) -> bool:
@@ -84,8 +85,13 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
         field_type = field.get("type")
         enum = field.get("enum")
         score = field.get("x-score", False)
+        allow_other = field.get("x-other", False)
         if "x-score" in field and type(score) is not bool:
             raise SchemaError(f"x-score for {name!r} must be a boolean")
+        if "x-other" in field and type(allow_other) is not bool:
+            raise SchemaError(f"x-other for {name!r} must be a boolean")
+        if allow_other and field_type != "string":
+            raise SchemaError(f"x-other for {name!r} requires type 'string'")
         if score:
             if field_type != "number":
                 raise SchemaError(f"x-score for {name!r} requires type 'number'")
@@ -121,6 +127,13 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
                 raise SchemaError(
                     f"enum values for {name!r} do not match type {field_type!r}"
                 )
+            if allow_other:
+                if "other" in values:
+                    raise SchemaError(
+                        f"enum for {name!r} must not contain reserved x-other "
+                        "value 'other'"
+                    )
+                values = [*values, "other"]
             syntax = "Choice"
         else:
             raise NotImplementedError(
@@ -129,6 +142,8 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
 
         if _has_duplicates(values):
             raise SchemaError(f"enum for {name!r} contains duplicate values")
-        decisions.append(Decision(name, question, tuple(values), syntax))
+        decisions.append(
+            Decision(name, question, tuple(values), syntax, allow_other)
+        )
 
     return decisions

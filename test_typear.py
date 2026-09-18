@@ -6,14 +6,18 @@ from typear import (
     TypeARClient,
     compile_json_schema,
 )
+from typear_sglang import SGLangError, extract_generated_text
 
 
 class FakeSGLang:
-    def __init__(self, selected_ids=None):
+    def __init__(self, selected_ids=None, generated_texts=None):
         self.selected_ids = iter(selected_ids or [32])
+        self.generated_texts = iter(generated_texts or [])
         self.prompts = []
         self.cached_prefixes = []
         self.batch_prompts = []
+        self.open_prompts = []
+        self.open_batch_prompts = []
 
     def single_token(self, label):
         return ord(label), label
@@ -47,6 +51,17 @@ class FakeSGLang:
             )
         return scored, 0.0
 
+    def generate_text(self, prefix, **kwargs):
+        self.open_prompts.append((prefix, kwargs))
+        return next(self.generated_texts), {"cached_tokens": 2}, 0.0
+
+    def generate_text_batch(self, prefixes, **kwargs):
+        self.open_batch_prompts.append((list(prefixes), kwargs))
+        return [
+            (next(self.generated_texts), {"cached_tokens": 2})
+            for _ in prefixes
+        ], 0.0
+
 
 class RecordingSGLangClient(SGLangClient):
     def __init__(self):
@@ -73,6 +88,17 @@ class RecordingSGLangClient(SGLangClient):
                 }
             },
         ]
+
+
+class OpenTextRecordingClient(SGLangClient):
+    def __init__(self, response):
+        super().__init__()
+        self.response = response
+        self.requests = []
+
+    def _request(self, path, payload=None, *, allow_text=False):
+        self.requests.append((path, payload))
+        return self.response
 
 
 class JsonSchemaCompilerTests(unittest.TestCase):
@@ -154,6 +180,42 @@ class JsonSchemaCompilerTests(unittest.TestCase):
         )
         self.assertEqual(decision.syntax, "Score")
 
+    def test_string_enum_with_other_adds_escape_branch(self):
+        [decision] = compile_json_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "expense_type": {
+                        "type": "string",
+                        "enum": ["meal", "travel", "equipment"],
+                        "x-other": True,
+                    }
+                },
+            }
+        )
+        self.assertEqual(
+            decision.choices, ("meal", "travel", "equipment", "other")
+        )
+        self.assertTrue(decision.allow_other)
+
+    def test_other_requires_boolean_string_enum_and_reserved_value(self):
+        invalid_fields = [
+            {"type": "string", "enum": ["x"], "x-other": "yes"},
+            {"type": "number", "enum": [1], "x-other": True},
+            {"type": "string", "x-other": True},
+            {"type": "string", "enum": ["other"], "x-other": True},
+        ]
+        for field in invalid_fields:
+            with self.subTest(field=field), self.assertRaises(
+                (SchemaError, NotImplementedError)
+            ):
+                compile_json_schema(
+                    {
+                        "type": "object",
+                        "properties": {"value": field},
+                    }
+                )
+
     def test_property_order_is_decision_order(self):
         decisions = compile_json_schema(
             {
@@ -203,6 +265,12 @@ class JsonSchemaCompilerTests(unittest.TestCase):
 
 
 class JsonSchemaExecutionTests(unittest.TestCase):
+    def test_manual_open_choice_requires_other_value(self):
+        from typear import Choice
+
+        with self.assertRaises(ValueError):
+            Choice(question="Open?", choices={"A": "known"}, allow_other=True)
+
     def test_score_uses_a_through_k_and_returns_float(self):
         schema = {
             "type": "object",
@@ -244,6 +312,38 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         self.assertNotIn("A", result)
         self.assertIn('answer="B",\n  value=0.5', fake.prompts[1])
 
+    def test_other_generates_bounded_string_and_conditions_next_decision(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "expense_type": {
+                    "type": "string",
+                    "enum": ["meal", "travel", "equipment"],
+                    "x-other": True,
+                    "x-question": "What type of expense is this?",
+                },
+                "reimbursable": {"type": "boolean"},
+            },
+        }
+        client = TypeARClient(other_max_new_tokens=24)
+        fake = FakeSGLang(
+            [ord("D"), ord("A")], generated_texts=[' conference registration"ignored']
+        )
+        client.sglang = fake
+
+        result = client.generate(
+            context="context", schema=schema, return_probabilities=True
+        )
+
+        self.assertEqual(result["expense_type"]["value"], "conference registration")
+        self.assertIn("other", result["expense_type"]["probabilities"])
+        self.assertEqual(result["reimbursable"]["value"], True)
+        self.assertEqual(fake.open_prompts[0][1]["stop"], '"')
+        self.assertEqual(fake.open_prompts[0][1]["max_new_tokens"], 24)
+        self.assertIn(
+            'answer="D",\n  value="conference registration"', fake.prompts[1]
+        )
+
     def test_batch_prefills_once_and_forks_independent_questions(self):
         schema = {
             "type": "object",
@@ -275,6 +375,40 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         self.assertIsNone(client.last_prompt)
         self.assertEqual(len(client.last_prompts), 2)
 
+    def test_batch_other_values_use_bounded_generation(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "expense_type": {
+                    "type": "string",
+                    "enum": ["meal"],
+                    "x-other": True,
+                },
+                "department": {
+                    "type": "string",
+                    "enum": ["sales"],
+                    "x-other": True,
+                },
+            },
+        }
+        client = TypeARClient(execution="batch")
+        fake = FakeSGLang(
+            [ord("B"), ord("B")],
+            generated_texts=["conference registration", "research"],
+        )
+        client.sglang = fake
+
+        result = client.generate(context="context", schema=schema)
+
+        self.assertEqual(
+            result,
+            {"expense_type": "conference registration", "department": "research"},
+        )
+        self.assertEqual(len(fake.open_batch_prompts), 1)
+        self.assertEqual(len(fake.open_batch_prompts[0][0]), 2)
+        self.assertIn('value="conference registration"', client.last_prompts[0])
+        self.assertIn('value="research"', client.last_prompts[1])
+
     def test_native_batch_request_uses_per_prompt_candidate_ids(self):
         client = RecordingSGLangClient()
 
@@ -289,6 +423,28 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         self.assertEqual(payload["token_ids_logprob"], [[65, 66], [65, 66]])
         self.assertEqual(scored[0][0], {65: -0.1, 66: -2.0})
         self.assertEqual(scored[1][0], {65: -3.0, 66: -0.2})
+
+    def test_open_generation_uses_quote_stop_and_extracts_text(self):
+        client = OpenTextRecordingClient(
+            {"text": "conference registration", "meta_info": {"cached_tokens": 64}}
+        )
+
+        text, meta, _ = client.generate_text(
+            'value="', max_new_tokens=24, temperature=0.2
+        )
+
+        path, payload = client.requests[0]
+        self.assertEqual(path, "/generate")
+        self.assertEqual(payload["sampling_params"]["stop"], ['"'])
+        self.assertEqual(payload["sampling_params"]["max_new_tokens"], 24)
+        self.assertEqual(text, "conference registration")
+        self.assertEqual(meta["cached_tokens"], 64)
+
+    def test_generated_text_response_shapes_and_errors(self):
+        self.assertEqual(extract_generated_text({"output_text": "x"})[0], "x")
+        self.assertEqual(extract_generated_text([{"generated_text": "y"}])[0], "y")
+        with self.assertRaises(SGLangError):
+            extract_generated_text({"meta_info": {}})
 
 
 if __name__ == "__main__":

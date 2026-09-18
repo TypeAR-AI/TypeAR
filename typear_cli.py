@@ -38,7 +38,7 @@ def example_schema() -> dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Sequential constrained decisions over SGLang /generate"
+        description="Type-safe decisions over SGLang /generate"
     )
     parser.add_argument(
         "--server-url",
@@ -50,6 +50,8 @@ def main() -> None:
         "--execution", choices=("sequential", "batch"), default="sequential"
     )
     parser.add_argument("--temperature", type=float, default=1.0)
+    parser.add_argument("--other-max-new-tokens", type=int, default=64)
+    parser.add_argument("--other-temperature", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--probabilities", action="store_true")
     parser.add_argument("--benchmark", action="store_true")
@@ -70,6 +72,8 @@ def main() -> None:
         execution=args.execution,
         temperature=args.temperature,
         seed=args.seed,
+        other_max_new_tokens=args.other_max_new_tokens,
+        other_temperature=args.other_temperature,
     )
     results = client.generate(
         context=receipt,

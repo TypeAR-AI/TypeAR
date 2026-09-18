@@ -6,9 +6,10 @@ TypeAR brings the same typed-decision interface to the open-source
 autoregressive models you already run—without a proprietary model API, model
 retraining, structured-output library, or manual KV-tensor management.
 
-1. **No out-of-schema hallucinations.** Every possible output value is
-   specified by the schema.
-2. **Negligible output-token cost.** Each decision generates exactly one token.
+1. **No undeclared escape.** Every decision stays inside its declared domain
+   unless the schema explicitly enables an open `x-other` branch.
+2. **Negligible output-token cost by default.** Closed decisions generate one
+   token; open text is generated only when `x-other` is selected.
 3. **Linear input cost.** Prefix-cache reuse makes newly processed input grow
    approximately linearly with the unique context added across the workflow.
 4. **Sequential dependencies when needed.** In sequential mode, each later
@@ -94,6 +95,7 @@ TypeAR currently supports finite decision spaces:
 | Number choice | `{"type": "number", "enum": [0.1, 0.5, 1.0]}` | `int` or `float` |
 | Boolean | `{"type": "boolean"}` | `bool` |
 | Score | `{"type": "number", "x-score": true}` | one of `0.0, 0.1, ..., 1.0` |
+| Open string choice | `{"type": "string", "enum": ["meal"], "x-other": true}` | enum value or bounded free text |
 
 Use `x-question` to tell the model what decision to make:
 
@@ -107,6 +109,71 @@ Use `x-question` to tell the model what decision to make:
 
 If `x-question` is absent, TypeAR uses `description`, then falls back to an
 instruction generated from the field name.
+
+## Beyond finite domains
+
+Ordinary TypeAR decisions come from finite sets because single-token control
+labels can cover an enum, a Boolean, or the eleven score levels from `0.0` to
+`1.0`. A typed field without a finite domain is rejected rather than guessed
+at.
+
+For a string enum, `x-other` can explicitly declare one open branch:
+
+```python
+"expense_type": {
+    "type": "string",
+    "enum": ["meal", "travel", "equipment"],
+    "x-other": True,
+    "x-question": "What type of expense is this?",
+}
+```
+
+The first stage remains a constrained decision. TypeAR compiles the field to:
+
+```text
+Choice(
+  name="expense_type",
+  question="What type of expense is this?",
+  choices={"A":"meal","B":"travel","C":"equipment","D":"other"},
+  answer="
+```
+
+Selecting `A`, `B`, or `C` writes the declared value back exactly as before.
+Selecting `D` opens a string value and continues generation until a closing
+quote, with `other_max_new_tokens` as a safety cap:
+
+```text
+Choice(
+  name="expense_type",
+  question="What type of expense is this?",
+  choices={"A":"meal","B":"travel","C":"equipment","D":"other"},
+  answer="D",
+  value="conference registration"
+)
+```
+
+The escape is itself a declared single-token choice: free text is reachable
+only when the model selects `other`. The generated string is then written into
+the running prefix, so every later sequential decision can condition on it.
+In batch mode, multiple selected `other` branches are generated as a second
+native SGLang batch.
+
+The default open generation is deterministic and capped at 64 tokens. It can
+be configured independently from constrained decision sampling:
+
+```python
+client = TypeARClient(
+    "http://127.0.0.1:30000",
+    other_max_new_tokens=32,
+    other_temperature=0.2,
+)
+```
+
+When probabilities are requested, they remain probabilities over the declared
+first-stage branches, including `other`; TypeAR does not assign a fabricated
+probability to the subsequently generated string. The caller can also add a
+generated value to a later enum, turning it into a declared one-token choice
+in the next decision; TypeAR does not mutate schemas automatically.
 
 ## Sequential and batch execution
 
@@ -224,10 +291,11 @@ result = run_schema(
 
 ## Cost analysis
 
-**Output generation is negligible—one token per field—and prefix reuse makes
-the newly processed input grow approximately linearly with the unique context
-added across the workflow.** The long original context is normally prefilled
-once rather than recomputed for every decision.
+**Closed decisions generate one token per field, and prefix reuse makes the
+newly processed input grow approximately linearly with the unique context
+added across the workflow.** An `x-other` branch adds free-text output cost only
+when selected. The long original context is normally prefilled once rather
+than recomputed for every decision.
 
 For `D` decisions, an original context of `C` tokens, and roughly `S` newly
 appended tokens per decision:
@@ -235,12 +303,17 @@ appended tokens per decision:
 ```text
 without prefix reuse: O(D*C + D^2*S)
 with prefix reuse:    O(C + D*S)
-output generation:    O(D)
+output generation:    O(D + E)
 ```
 
-For `K` independent batch decisions with question lengths `Q_1, ..., Q_K`, the
-corresponding prefill count is approximately `C + sum(Q_k)`, followed by one
-batched decode step that produces `K` output tokens.
+Here `E` is the total number of free-text tokens produced by selected
+`x-other` branches and is zero for a fully closed schema.
+
+For `K` independent closed batch decisions with question lengths
+`Q_1, ..., Q_K`, the corresponding prefill count is approximately
+`C + sum(Q_k)`, followed by one batched decode step that produces `K` output
+tokens. Selected open branches add their `E` free-text tokens in a second
+batched generation step.
 
 These are prefill token-position counts, not exact GPU FLOPs. New tokens still
 attend to the cached prefix, and real latency also depends on cache alignment,

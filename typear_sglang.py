@@ -119,6 +119,65 @@ class SGLangClient:
         meta = response.get("meta_info", {}) if isinstance(response, Mapping) else {}
         return scores, meta, elapsed
 
+    def generate_text(
+        self,
+        prefix: str,
+        *,
+        max_new_tokens: int = 64,
+        temperature: float = 0.0,
+        stop: str = '"',
+    ) -> tuple[str, Mapping[str, Any], float]:
+        """Generate an open value bounded by a stop string and token limit."""
+        payload = {
+            "text": prefix,
+            "sampling_params": {
+                "max_new_tokens": max_new_tokens,
+                "temperature": temperature,
+                "stop": [stop],
+            },
+        }
+        start = time.perf_counter()
+        response = self._request("/generate", payload)
+        elapsed = time.perf_counter() - start
+        text, meta = extract_generated_text(response)
+        return text, meta, elapsed
+
+    def generate_text_batch(
+        self,
+        prefixes: Sequence[str],
+        *,
+        max_new_tokens: int = 64,
+        temperature: float = 0.0,
+        stop: str = '"',
+    ) -> tuple[list[tuple[str, Mapping[str, Any]]], float]:
+        """Generate bounded open values for several independent branches."""
+        if not prefixes:
+            return [], 0.0
+        payload = {
+            "text": list(prefixes),
+            "sampling_params": {
+                "max_new_tokens": max_new_tokens,
+                "temperature": temperature,
+                "stop": [stop],
+            },
+        }
+        start = time.perf_counter()
+        response = self._request("/generate", payload)
+        elapsed = time.perf_counter() - start
+        if isinstance(response, Mapping) and len(prefixes) == 1:
+            responses = [response]
+        elif isinstance(response, list):
+            responses = response
+        else:
+            raise SGLangError(
+                f"Expected a batched /generate response, got {type(response).__name__}"
+            )
+        if len(responses) != len(prefixes):
+            raise SGLangError(
+                f"Expected {len(prefixes)} open-value responses, got {len(responses)}"
+            )
+        return [extract_generated_text(item) for item in responses], elapsed
+
     def cache_prefix(self, prefix: str) -> Mapping[str, Any]:
         """Prefill a shared prefix without generating an output token."""
         response = self._request(
@@ -186,6 +245,32 @@ class SGLangClient:
         reply = self._request("/flush_cache", {}, allow_text=True)
         if isinstance(reply, str) and not reply.startswith("Cache flushed."):
             raise SGLangError(f"SGLang refused to flush its prefix cache: {reply}")
+
+
+def extract_generated_text(
+    response: Any,
+) -> tuple[str, Mapping[str, Any]]:
+    """Extract generated text from current and compatible SGLang shapes."""
+    if isinstance(response, list):
+        if len(response) != 1:
+            raise SGLangError(f"Expected one /generate response, got {len(response)}")
+        response = response[0]
+    if not isinstance(response, Mapping):
+        raise SGLangError(f"Unexpected /generate response type: {type(response).__name__}")
+
+    text = None
+    for key in ("text", "output_text", "generated_text"):
+        candidate = response.get(key)
+        if isinstance(candidate, str):
+            text = candidate
+            break
+    if text is None:
+        raise SGLangError(
+            "Generated text was not found in the SGLang response; "
+            f"response keys={list(response.keys())}"
+        )
+    meta = response.get("meta_info", {})
+    return text, meta if isinstance(meta, Mapping) else {}
 
 
 def _score_entry(entry: Any, candidate_ids: set[int]) -> tuple[int, float] | None:

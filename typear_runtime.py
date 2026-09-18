@@ -26,12 +26,20 @@ class Choice:
     choices: Mapping[str, Any]
     name: str | None = None
     syntax: str = "Choice"
+    allow_other: bool = False
 
     def __post_init__(self) -> None:
         if not self.choices:
             raise ValueError("Choice.choices must not be empty")
         if any(not label for label in self.choices):
             raise ValueError("Choice labels must be non-empty strings")
+        if self.allow_other and sum(
+            type(value) is str and value == "other"
+            for value in self.choices.values()
+        ) != 1:
+            raise ValueError(
+                "Choice with allow_other=True must contain exactly one 'other' value"
+            )
 
     def opening_text(self) -> str:
         question = json.dumps(self.question, ensure_ascii=False)
@@ -67,15 +75,20 @@ class TypeARClient:
         seed: int | None = None,
         timeout: float = 120.0,
         label_pool: Sequence[str] | None = None,
+        other_max_new_tokens: int = 64,
+        other_temperature: float = 0.0,
     ) -> None:
         _validate_decoding(mode, temperature)
         _validate_execution(execution)
+        _validate_other_generation(other_max_new_tokens, other_temperature)
         self.sglang = SGLangClient(base_url, model, timeout)
         self.mode = mode
         self.execution = execution
         self.temperature = temperature
         self.rng = random.Random(seed)
         self.label_pool = tuple(label_pool or self.DEFAULT_LABEL_POOL)
+        self.other_max_new_tokens = other_max_new_tokens
+        self.other_temperature = other_temperature
         self.label_token_map: dict[str, int] = {}
         self.last_prompt: str | None = None
         self.last_prompts: list[str] = []
@@ -117,6 +130,7 @@ class TypeARClient:
                     choices=dict(zip(labels, item.choices)),
                     name=item.name,
                     syntax=item.syntax,
+                    allow_other=item.allow_other,
                 )
                 for item in decisions
             ]
@@ -222,6 +236,8 @@ class TypeARClient:
                 active_mode,
                 active_temperature,
                 self.rng,
+                self.other_max_new_tokens,
+                self.other_temperature,
             )
             self.last_prompts = [self.last_prompt]
         else:
@@ -232,6 +248,8 @@ class TypeARClient:
                 active_mode,
                 active_temperature,
                 self.rng,
+                self.other_max_new_tokens,
+                self.other_temperature,
             )
             self.last_prompt = None
 
@@ -296,6 +314,30 @@ def _validate_execution(execution: str) -> None:
         raise ValueError("execution must be 'sequential' or 'batch'")
 
 
+def _validate_other_generation(max_new_tokens: int, temperature: float) -> None:
+    if type(max_new_tokens) is not int or max_new_tokens <= 0:
+        raise ValueError("other_max_new_tokens must be a positive integer")
+    if not math.isfinite(temperature) or temperature < 0:
+        raise ValueError("other_temperature must be finite and >= 0")
+
+
+def _normalize_other_text(text: str, decision_name: str | None) -> str:
+    # SGLang normally trims the matched stop string. Also trim it here for
+    # compatibility with response variants that include the delimiter.
+    value = text.split('"', 1)[0].strip()
+    if not value:
+        raise ValueError(
+            f"Open branch for {decision_name!r} generated an empty string"
+        )
+    return value
+
+
+def _append_json_string_tail(prefix: str, value: str) -> str:
+    """Close a JSON-style string whose opening quote is already in prefix."""
+    encoded = json.dumps(value, ensure_ascii=False)
+    return prefix + encoded[1:] + "\n)"
+
+
 def _execute_decisions(
     client: SGLangClient,
     context: str,
@@ -303,6 +345,8 @@ def _execute_decisions(
     mode: str,
     temperature: float,
     rng: random.Random,
+    other_max_new_tokens: int = 64,
+    other_temperature: float = 0.0,
 ) -> tuple[list[dict], str]:
     prefix = context.rstrip() + "\n\n"
     results: list[dict] = []
@@ -348,12 +392,32 @@ def _execute_decisions(
 
         # Send the growing full prefix again. SGLang—not this client—owns and
         # recovers all KV tensors through its RadixAttention prefix cache.
-        prefix += (
-            selected_text
-            + '",\n  value='
-            + json.dumps(semantic_value, ensure_ascii=False, separators=(",", ":"))
-            + "\n)"
-        )
+        if decision.allow_other and semantic_value == "other":
+            prefix += selected_text + '",\n  value="'
+            generated, other_meta, other_elapsed = client.generate_text(
+                prefix,
+                max_new_tokens=other_max_new_tokens,
+                temperature=other_temperature,
+                stop='"',
+            )
+            semantic_value = _normalize_other_text(generated, decision.name)
+            prefix = _append_json_string_tail(prefix, semantic_value)
+            LOG.info(
+                "decision=%d open_value=%r elapsed=%.4fs cached_tokens=%s",
+                index,
+                semantic_value,
+                other_elapsed,
+                other_meta.get("cached_tokens"),
+            )
+        else:
+            prefix += (
+                selected_text
+                + '",\n  value='
+                + json.dumps(
+                    semantic_value, ensure_ascii=False, separators=(",", ":")
+                )
+                + "\n)"
+            )
         if index + 1 < len(decisions):
             prefix += "\n\n"
         results.append(
@@ -375,6 +439,8 @@ def _execute_batch_decisions(
     mode: str,
     temperature: float,
     rng: random.Random,
+    other_max_new_tokens: int = 64,
+    other_temperature: float = 0.0,
 ) -> tuple[list[dict], list[str]]:
     shared_prefix = context.rstrip() + "\n\n"
     label_tokens_by_decision: list[dict[str, tuple[int, str]]] = []
@@ -406,6 +472,8 @@ def _execute_batch_decisions(
 
     results: list[dict] = []
     completed_prompts: list[str] = []
+    open_indexes: list[int] = []
+    open_prefixes: list[str] = []
     for index, (decision, label_tokens, (by_id, meta)) in enumerate(
         zip(decisions, label_tokens_by_decision, scored)
     ):
@@ -422,13 +490,21 @@ def _execute_batch_decisions(
         )
         selected_text = label_tokens[selected][1]
         semantic_value = decision.choices[selected]
-        completed_prompts.append(
-            prompts[index]
-            + selected_text
-            + '",\n  value='
-            + json.dumps(semantic_value, ensure_ascii=False, separators=(",", ":"))
-            + "\n)"
-        )
+        if decision.allow_other and semantic_value == "other":
+            open_prefix = prompts[index] + selected_text + '",\n  value="'
+            completed_prompts.append(open_prefix)
+            open_indexes.append(index)
+            open_prefixes.append(open_prefix)
+        else:
+            completed_prompts.append(
+                prompts[index]
+                + selected_text
+                + '",\n  value='
+                + json.dumps(
+                    semantic_value, ensure_ascii=False, separators=(",", ":")
+                )
+                + "\n)"
+            )
         LOG.info("batch_decision=%d raw_candidate_logprobs=%s", index, raw)
         LOG.info(
             "batch_decision=%d renormalized_probabilities=%s", index, probabilities
@@ -451,6 +527,31 @@ def _execute_batch_decisions(
                 "probabilities": probabilities,
             }
         )
+
+    if open_prefixes:
+        generated_rows, other_elapsed = client.generate_text_batch(
+            open_prefixes,
+            max_new_tokens=other_max_new_tokens,
+            temperature=other_temperature,
+            stop='"',
+        )
+        for result_index, open_prefix, (generated, meta) in zip(
+            open_indexes, open_prefixes, generated_rows
+        ):
+            decision = decisions[result_index]
+            semantic_value = _normalize_other_text(generated, decision.name)
+            results[result_index]["value"] = semantic_value
+            completed_prompts[result_index] = _append_json_string_tail(
+                open_prefix, semantic_value
+            )
+            LOG.info(
+                "batch_decision=%d open_value=%r batch_elapsed=%.4fs "
+                "cached_tokens=%s",
+                result_index,
+                semantic_value,
+                other_elapsed,
+                meta.get("cached_tokens"),
+            )
     return results, completed_prompts
 
 
@@ -476,15 +577,25 @@ def run_sequential_decisions(
     base_url: str | None = None,
     model: str | None = None,
     seed: int | None = None,
+    other_max_new_tokens: int = 64,
+    other_temperature: float = 0.0,
     print_final_prompt: bool = True,
 ) -> list[dict]:
     _validate_decoding(mode, temperature)
+    _validate_other_generation(other_max_new_tokens, other_temperature)
     client = SGLangClient(
         base_url or os.environ.get("SGLANG_URL", "http://127.0.0.1:30000"),
         model or os.environ.get("SGLANG_MODEL"),
     )
     results, prefix = _execute_decisions(
-        client, context, decisions, mode, temperature, random.Random(seed)
+        client,
+        context,
+        decisions,
+        mode,
+        temperature,
+        random.Random(seed),
+        other_max_new_tokens,
+        other_temperature,
     )
     if print_final_prompt:
         _print_final_prompt(prefix)
@@ -502,6 +613,8 @@ def run_schema(
     model: str | None = None,
     seed: int | None = None,
     return_probabilities: bool = False,
+    other_max_new_tokens: int = 64,
+    other_temperature: float = 0.0,
     print_final_prompt: bool = False,
 ) -> dict[str, Any]:
     client = TypeARClient(
@@ -511,6 +624,8 @@ def run_schema(
         execution=execution,
         temperature=temperature,
         seed=seed,
+        other_max_new_tokens=other_max_new_tokens,
+        other_temperature=other_temperature,
     )
     return client.generate(
         context=context,
