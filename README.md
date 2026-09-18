@@ -126,6 +126,27 @@ TypeAR supports both finite decisions and grammar-constrained numeric fields:
 
 Finite enums may contain at most 16 values.
 
+For example, ask for a numeric answer without enumerating every possible value:
+
+```python
+result = client.generate(
+    context="Calculate the requested value accurately.",
+    schema={
+        "type": "object",
+        "properties": {
+            "answer": {
+                "type": "number",
+                "question": "What is 17.5 multiplied by 4?",
+            },
+        },
+        "required": ["answer"],
+    },
+)
+
+print(result)
+# {"answer": 70.0}
+```
+
 Use `question` to tell the model what decision to make:
 
 ```python
