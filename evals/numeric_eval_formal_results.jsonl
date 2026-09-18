@@ -1,0 +1,128 @@
+{"id": "integer_extraction_000", "category": "integer_extraction", "expected": 5057, "result": {"answer": 5057}, "correct": true, "error": null, "seconds": 2.02380852899978}
+{"id": "integer_extraction_001", "category": "integer_extraction", "expected": 2534, "result": {"answer": 2534}, "correct": true, "error": null, "seconds": 0.21123163199990813}
+{"id": "integer_extraction_002", "category": "integer_extraction", "expected": 836, "result": {"answer": 836}, "correct": true, "error": null, "seconds": 0.16891141799987963}
+{"id": "integer_extraction_003", "category": "integer_extraction", "expected": 9949, "result": {"answer": 9949}, "correct": true, "error": null, "seconds": 0.21106071299982432}
+{"id": "integer_extraction_004", "category": "integer_extraction", "expected": 7074, "result": {"answer": 7074}, "correct": true, "error": null, "seconds": 0.21129766200010636}
+{"id": "integer_extraction_005", "category": "integer_extraction", "expected": 5778, "result": {"answer": 5778}, "correct": true, "error": null, "seconds": 0.2113831419997041}
+{"id": "integer_extraction_006", "category": "integer_extraction", "expected": 5339, "result": {"answer": 5339}, "correct": true, "error": null, "seconds": 0.21116927299999588}
+{"id": "integer_extraction_007", "category": "integer_extraction", "expected": 2577, "result": {"answer": 2577}, "correct": true, "error": null, "seconds": 0.211118703000011}
+{"id": "integer_extraction_008", "category": "integer_extraction", "expected": 5877, "result": {"answer": 5877}, "correct": true, "error": null, "seconds": 0.2114638930002002}
+{"id": "integer_extraction_009", "category": "integer_extraction", "expected": 1805, "result": {"answer": 1805}, "correct": true, "error": null, "seconds": 0.21127576199978648}
+{"id": "integer_extraction_010", "category": "integer_extraction", "expected": 9002, "result": {"answer": 9002}, "correct": true, "error": null, "seconds": 0.21130160300026546}
+{"id": "integer_extraction_011", "category": "integer_extraction", "expected": 9673, "result": {"answer": 9673}, "correct": true, "error": null, "seconds": 0.2112031419997038}
+{"id": "integer_extraction_012", "category": "integer_extraction", "expected": 6063, "result": {"answer": 6063}, "correct": true, "error": null, "seconds": 0.21120129300015833}
+{"id": "integer_extraction_013", "category": "integer_extraction", "expected": 2055, "result": {"answer": 2055}, "correct": true, "error": null, "seconds": 0.211220572000002}
+{"id": "integer_extraction_014", "category": "integer_extraction", "expected": 1613, "result": {"answer": 1613}, "correct": true, "error": null, "seconds": 0.21124152299989873}
+{"id": "integer_extraction_015", "category": "integer_extraction", "expected": 3576, "result": {"answer": 3576}, "correct": true, "error": null, "seconds": 0.21114960200020505}
+{"id": "integer_extraction_016", "category": "integer_extraction", "expected": 3128, "result": {"answer": 3128}, "correct": true, "error": null, "seconds": 0.21113190300002316}
+{"id": "integer_extraction_017", "category": "integer_extraction", "expected": 771, "result": {"answer": 771}, "correct": true, "error": null, "seconds": 0.16888043800008745}
+{"id": "integer_extraction_018", "category": "integer_extraction", "expected": 5520, "result": {"answer": 5520}, "correct": true, "error": null, "seconds": 0.2113034220001282}
+{"id": "integer_extraction_019", "category": "integer_extraction", "expected": 2995, "result": {"answer": 2995}, "correct": true, "error": null, "seconds": 0.21119467199969222}
+{"id": "integer_extraction_020", "category": "integer_extraction", "expected": 9890, "result": {"answer": 9890}, "correct": true, "error": null, "seconds": 0.21100858299996617}
+{"id": "integer_extraction_021", "category": "integer_extraction", "expected": 4752, "result": {"answer": 4752}, "correct": true, "error": null, "seconds": 0.21142220199999429}
+{"id": "integer_extraction_022", "category": "integer_extraction", "expected": 3865, "result": {"answer": 3865}, "correct": true, "error": null, "seconds": 0.21125364299996363}
+{"id": "integer_extraction_023", "category": "integer_extraction", "expected": 9940, "result": {"answer": 9940}, "correct": true, "error": null, "seconds": 0.21121759200013912}
+{"id": "integer_arithmetic_000", "category": "integer_arithmetic", "expected": 1440, "result": {"answer": 1440}, "correct": true, "error": null, "seconds": 0.21051807300000291}
+{"id": "integer_arithmetic_001", "category": "integer_arithmetic", "expected": -587, "result": {"answer": -587}, "correct": true, "error": null, "seconds": 0.2105174729999817}
+{"id": "integer_arithmetic_002", "category": "integer_arithmetic", "expected": 2701, "result": {"answer": 2701}, "correct": true, "error": null, "seconds": 0.21036468300007982}
+{"id": "integer_arithmetic_003", "category": "integer_arithmetic", "expected": 932, "result": {"answer": 932}, "correct": true, "error": null, "seconds": 0.16836389799982499}
+{"id": "integer_arithmetic_004", "category": "integer_arithmetic", "expected": -465, "result": {"answer": -465}, "correct": true, "error": null, "seconds": 0.21057451300021057}
+{"id": "integer_arithmetic_005", "category": "integer_arithmetic", "expected": 660, "result": {"answer": 660}, "correct": true, "error": null, "seconds": 0.1682183289999557}
+{"id": "integer_arithmetic_006", "category": "integer_arithmetic", "expected": 749, "result": {"answer": 749}, "correct": true, "error": null, "seconds": 0.16842262799991659}
+{"id": "integer_arithmetic_007", "category": "integer_arithmetic", "expected": -455, "result": {"answer": -455}, "correct": true, "error": null, "seconds": 0.21053761300026963}
+{"id": "integer_arithmetic_008", "category": "integer_arithmetic", "expected": 2772, "result": {"answer": 2772}, "correct": true, "error": null, "seconds": 0.20990869299976112}
+{"id": "integer_arithmetic_009", "category": "integer_arithmetic", "expected": 794, "result": {"answer": 794}, "correct": true, "error": null, "seconds": 0.16809499900000446}
+{"id": "integer_arithmetic_010", "category": "integer_arithmetic", "expected": -626, "result": {"answer": -626}, "correct": true, "error": null, "seconds": 0.2095271330003925}
+{"id": "integer_arithmetic_011", "category": "integer_arithmetic", "expected": 1925, "result": {"answer": 1925}, "correct": true, "error": null, "seconds": 0.209885143000065}
+{"id": "integer_arithmetic_012", "category": "integer_arithmetic", "expected": 348, "result": {"answer": 348}, "correct": true, "error": null, "seconds": 0.16744944899983238}
+{"id": "integer_arithmetic_013", "category": "integer_arithmetic", "expected": -164, "result": {"answer": -164}, "correct": true, "error": null, "seconds": 0.20926701400003367}
+{"id": "integer_arithmetic_014", "category": "integer_arithmetic", "expected": 4824, "result": {"answer": 4824}, "correct": true, "error": null, "seconds": 0.20917245400005413}
+{"id": "integer_arithmetic_015", "category": "integer_arithmetic", "expected": 435, "result": {"answer": 435}, "correct": true, "error": null, "seconds": 0.16727327899980082}
+{"id": "integer_arithmetic_016", "category": "integer_arithmetic", "expected": -377, "result": {"answer": -377}, "correct": true, "error": null, "seconds": 0.2091912930000035}
+{"id": "integer_arithmetic_017", "category": "integer_arithmetic", "expected": 5913, "result": {"answer": 5913}, "correct": true, "error": null, "seconds": 0.20918197400033023}
+{"id": "integer_arithmetic_018", "category": "integer_arithmetic", "expected": 741, "result": {"answer": 741}, "correct": true, "error": null, "seconds": 0.167109549000088}
+{"id": "integer_arithmetic_019", "category": "integer_arithmetic", "expected": -113, "result": {"answer": -113}, "correct": true, "error": null, "seconds": 0.2089954539997052}
+{"id": "integer_arithmetic_020", "category": "integer_arithmetic", "expected": 171, "result": {"answer": 171}, "correct": true, "error": null, "seconds": 0.16692843900000298}
+{"id": "integer_arithmetic_021", "category": "integer_arithmetic", "expected": 216, "result": {"answer": 216}, "correct": true, "error": null, "seconds": 0.16720364899993}
+{"id": "integer_arithmetic_022", "category": "integer_arithmetic", "expected": -365, "result": {"answer": -365}, "correct": true, "error": null, "seconds": 0.20905599400020947}
+{"id": "integer_arithmetic_023", "category": "integer_arithmetic", "expected": 846, "result": {"answer": 846}, "correct": true, "error": null, "seconds": 0.1670227990002786}
+{"id": "number_extraction_000", "category": "number_extraction", "expected": -169.5, "result": {"answer": -169.5}, "correct": true, "error": null, "seconds": 0.29346172299983664}
+{"id": "number_extraction_001", "category": "number_extraction", "expected": -85.25, "result": {"answer": -85.25}, "correct": true, "error": null, "seconds": 0.2933442229996217}
+{"id": "number_extraction_002", "category": "number_extraction", "expected": 440.8, "result": {"answer": 440.8}, "correct": true, "error": null, "seconds": 0.2516453879998153}
+{"id": "number_extraction_003", "category": "number_extraction", "expected": 258.5, "result": {"answer": 258.5}, "correct": true, "error": null, "seconds": 0.25081678800006557}
+{"id": "number_extraction_004", "category": "number_extraction", "expected": -78.5, "result": {"answer": -78.5}, "correct": true, "error": null, "seconds": 0.25136134900003526}
+{"id": "number_extraction_005", "category": "number_extraction", "expected": 120.75, "result": {"answer": 120.75}, "correct": true, "error": null, "seconds": 0.2928539730000921}
+{"id": "number_extraction_006", "category": "number_extraction", "expected": -160.5, "result": {"answer": -160.5}, "correct": true, "error": null, "seconds": 0.2930184530000588}
+{"id": "number_extraction_007", "category": "number_extraction", "expected": 244.75, "result": {"answer": 244.75}, "correct": true, "error": null, "seconds": 0.29353045399966504}
+{"id": "number_extraction_008", "category": "number_extraction", "expected": 214.1, "result": {"answer": 214.1}, "correct": true, "error": null, "seconds": 0.2516053619997365}
+{"id": "number_extraction_009", "category": "number_extraction", "expected": 10.25, "result": {"answer": 10.25}, "correct": true, "error": null, "seconds": 0.2516359910000574}
+{"id": "number_extraction_010", "category": "number_extraction", "expected": 14.1, "result": {"answer": 14.1}, "correct": true, "error": null, "seconds": 0.20956771999999546}
+{"id": "number_extraction_011", "category": "number_extraction", "expected": 231.25, "result": {"answer": 231.25}, "correct": true, "error": null, "seconds": 0.29367501300021104}
+{"id": "number_extraction_012", "category": "number_extraction", "expected": 443.25, "result": {"answer": 443.25}, "correct": true, "error": null, "seconds": 0.2937058539996542}
+{"id": "number_extraction_013", "category": "number_extraction", "expected": 175.75, "result": {"answer": 175.75}, "correct": true, "error": null, "seconds": 0.2925653039997087}
+{"id": "number_extraction_014", "category": "number_extraction", "expected": -100.2, "result": {"answer": -100.2}, "correct": true, "error": null, "seconds": 0.29203018500038525}
+{"id": "number_extraction_015", "category": "number_extraction", "expected": -192.25, "result": {"answer": -192.25}, "correct": true, "error": null, "seconds": 0.33387501600009273}
+{"id": "number_extraction_016", "category": "number_extraction", "expected": 276.75, "result": {"answer": 276.75}, "correct": true, "error": null, "seconds": 0.29183733499985465}
+{"id": "number_extraction_017", "category": "number_extraction", "expected": 343.25, "result": {"answer": 343.25}, "correct": true, "error": null, "seconds": 0.29214195400027165}
+{"id": "number_extraction_018", "category": "number_extraction", "expected": 0.75, "result": {"answer": 0.75}, "correct": true, "error": null, "seconds": 0.20846383100024468}
+{"id": "number_extraction_019", "category": "number_extraction", "expected": 247.5, "result": {"answer": 247.5}, "correct": true, "error": null, "seconds": 0.25020505200018306}
+{"id": "number_extraction_020", "category": "number_extraction", "expected": 184.5, "result": {"answer": 184.5}, "correct": true, "error": null, "seconds": 0.25026868299983107}
+{"id": "number_extraction_021", "category": "number_extraction", "expected": 418.8, "result": {"answer": 418.8}, "correct": true, "error": null, "seconds": 0.2503505019999466}
+{"id": "number_extraction_022", "category": "number_extraction", "expected": 394.8, "result": {"answer": 394.8}, "correct": true, "error": null, "seconds": 0.25014951299999666}
+{"id": "number_extraction_023", "category": "number_extraction", "expected": -66.5, "result": {"answer": -66.5}, "correct": true, "error": null, "seconds": 0.25021997199974066}
+{"id": "number_arithmetic_000", "category": "number_arithmetic", "expected": 52.8, "result": {"answer": 52.8}, "correct": true, "error": null, "seconds": 0.20840067100016313}
+{"id": "number_arithmetic_001", "category": "number_arithmetic", "expected": 35.6, "result": {"answer": 35.6}, "correct": true, "error": null, "seconds": 0.208052650999889}
+{"id": "number_arithmetic_002", "category": "number_arithmetic", "expected": -1.8, "result": {"answer": -1.8}, "correct": true, "error": null, "seconds": 0.20790246099977594}
+{"id": "number_arithmetic_003", "category": "number_arithmetic", "expected": 10.7, "result": {"answer": 10.7}, "correct": true, "error": null, "seconds": 0.20785905999991883}
+{"id": "number_arithmetic_004", "category": "number_arithmetic", "expected": 13.05, "result": {"answer": 13.05}, "correct": true, "error": null, "seconds": 0.24972004299979744}
+{"id": "number_arithmetic_005", "category": "number_arithmetic", "expected": 11.5, "result": {"answer": 11.5}, "correct": true, "error": null, "seconds": 0.20777960100031123}
+{"id": "number_arithmetic_006", "category": "number_arithmetic", "expected": 59.8, "result": {"answer": 59.8}, "correct": true, "error": null, "seconds": 0.2085248909997972}
+{"id": "number_arithmetic_007", "category": "number_arithmetic", "expected": 2.9, "result": {"answer": 2.9}, "correct": true, "error": null, "seconds": 0.16613185799997154}
+{"id": "number_arithmetic_008", "category": "number_arithmetic", "expected": -24.4, "result": {"answer": -24.4}, "correct": true, "error": null, "seconds": 0.24983698299956814}
+{"id": "number_arithmetic_009", "category": "number_arithmetic", "expected": 13.6, "result": {"answer": 13.6}, "correct": true, "error": null, "seconds": 0.20804278100013107}
+{"id": "number_arithmetic_010", "category": "number_arithmetic", "expected": 5.35, "result": {"answer": 5.35}, "correct": true, "error": null, "seconds": 0.20834399099976508}
+{"id": "number_arithmetic_011", "category": "number_arithmetic", "expected": -8.5, "result": {"answer": -8.5}, "correct": true, "error": null, "seconds": 0.20776280000018232}
+{"id": "number_arithmetic_012", "category": "number_arithmetic", "expected": 1.55, "result": {"answer": 1.55}, "correct": true, "error": null, "seconds": 0.2080516810001427}
+{"id": "number_arithmetic_013", "category": "number_arithmetic", "expected": 33.5, "result": {"answer": 33.5}, "correct": true, "error": null, "seconds": 0.20815779099984866}
+{"id": "number_arithmetic_014", "category": "number_arithmetic", "expected": 6.85, "result": {"answer": 6.85}, "correct": true, "error": null, "seconds": 0.2082344909999847}
+{"id": "number_arithmetic_015", "category": "number_arithmetic", "expected": 1.7, "result": {"answer": 1.7}, "correct": true, "error": null, "seconds": 0.16610032800008412}
+{"id": "number_arithmetic_016", "category": "number_arithmetic", "expected": 44.25, "result": {"answer": 44.25}, "correct": true, "error": null, "seconds": 0.2501495030001024}
+{"id": "number_arithmetic_017", "category": "number_arithmetic", "expected": 35.4, "result": {"answer": 35.4}, "correct": true, "error": null, "seconds": 0.20797269099966798}
+{"id": "number_arithmetic_018", "category": "number_arithmetic", "expected": 35.4, "result": {"answer": 35.4}, "correct": true, "error": null, "seconds": 0.20841997999968953}
+{"id": "number_arithmetic_019", "category": "number_arithmetic", "expected": 24.5, "result": {"answer": 24.5}, "correct": true, "error": null, "seconds": 0.20795788099985657}
+{"id": "number_arithmetic_020", "category": "number_arithmetic", "expected": -1.35, "result": {"answer": -1.35}, "correct": true, "error": null, "seconds": 0.24974656299991693}
+{"id": "number_arithmetic_021", "category": "number_arithmetic", "expected": -1.5, "result": {"answer": -1.5}, "correct": true, "error": null, "seconds": 0.20782518100031666}
+{"id": "number_arithmetic_022", "category": "number_arithmetic", "expected": 7.2, "result": {"answer": 7.2}, "correct": true, "error": null, "seconds": 0.16623393899999428}
+{"id": "number_arithmetic_023", "category": "number_arithmetic", "expected": 11.6, "result": {"answer": 11.6}, "correct": true, "error": null, "seconds": 0.20764374100008354}
+{"id": "negative_integer_000", "category": "negative_integer", "expected": -4187, "result": {"answer": -4187}, "correct": true, "error": null, "seconds": 0.25017786199987313}
+{"id": "negative_integer_001", "category": "negative_integer", "expected": -7641, "result": {"answer": -7641}, "correct": true, "error": null, "seconds": 0.25029082300034133}
+{"id": "negative_integer_002", "category": "negative_integer", "expected": -8665, "result": {"answer": -8665}, "correct": true, "error": null, "seconds": 0.25013037200005783}
+{"id": "negative_integer_003", "category": "negative_integer", "expected": -9515, "result": {"answer": -9515}, "correct": true, "error": null, "seconds": 0.25024157300003935}
+{"id": "negative_integer_004", "category": "negative_integer", "expected": -4805, "result": {"answer": -4805}, "correct": true, "error": null, "seconds": 0.2501348920000055}
+{"id": "negative_integer_005", "category": "negative_integer", "expected": -5167, "result": {"answer": -5167}, "correct": true, "error": null, "seconds": 0.2502333229999749}
+{"id": "negative_integer_006", "category": "negative_integer", "expected": -9964, "result": {"answer": -9964}, "correct": true, "error": null, "seconds": 0.2502513419999559}
+{"id": "negative_integer_007", "category": "negative_integer", "expected": -6062, "result": {"answer": -6062}, "correct": true, "error": null, "seconds": 0.250207692999993}
+{"id": "negative_integer_008", "category": "negative_integer", "expected": -1763, "result": {"answer": -1763}, "correct": true, "error": null, "seconds": 0.2501376719997097}
+{"id": "negative_integer_009", "category": "negative_integer", "expected": -5400, "result": {"answer": -5400}, "correct": true, "error": null, "seconds": 0.25018163300001106}
+{"id": "negative_integer_010", "category": "negative_integer", "expected": -7061, "result": {"answer": -7061}, "correct": true, "error": null, "seconds": 0.25012220299959154}
+{"id": "negative_integer_011", "category": "negative_integer", "expected": -4484, "result": {"answer": -4484}, "correct": true, "error": null, "seconds": 0.25025298199989265}
+{"id": "negative_integer_012", "category": "negative_integer", "expected": -8506, "result": {"answer": -8506}, "correct": true, "error": null, "seconds": 0.25019946299971707}
+{"id": "negative_integer_013", "category": "negative_integer", "expected": -3273, "result": {"answer": -3273}, "correct": true, "error": null, "seconds": 0.250383692000014}
+{"id": "negative_integer_014", "category": "negative_integer", "expected": -1752, "result": {"answer": -1752}, "correct": true, "error": null, "seconds": 0.25007500300034735}
+{"id": "negative_integer_015", "category": "negative_integer", "expected": -1303, "result": {"answer": -1303}, "correct": true, "error": null, "seconds": 0.25012438199973985}
+{"id": "sequential_dependency_000", "category": "sequential_dependency", "expected": 12, "result": {"answer": 12, "is_positive": true}, "correct": true, "error": null, "seconds": 0.16762338800026555}
+{"id": "sequential_dependency_001", "category": "sequential_dependency", "expected": -68, "result": {"answer": -68, "is_positive": false}, "correct": true, "error": null, "seconds": 0.20947392000016407}
+{"id": "sequential_dependency_002", "category": "sequential_dependency", "expected": 23, "result": {"answer": 23, "is_positive": true}, "correct": true, "error": null, "seconds": 0.16732956799978638}
+{"id": "sequential_dependency_003", "category": "sequential_dependency", "expected": -48, "result": {"answer": -48, "is_positive": false}, "correct": true, "error": null, "seconds": 0.20915189000015744}
+{"id": "sequential_dependency_004", "category": "sequential_dependency", "expected": 8, "result": {"answer": 8, "is_positive": true}, "correct": true, "error": null, "seconds": 0.12558070600016435}
+{"id": "sequential_dependency_005", "category": "sequential_dependency", "expected": -58, "result": {"answer": -58, "is_positive": false}, "correct": true, "error": null, "seconds": 0.20913556000004974}
+{"id": "sequential_dependency_006", "category": "sequential_dependency", "expected": 3, "result": {"answer": 3, "is_positive": true}, "correct": true, "error": null, "seconds": 0.12566856599960374}
+{"id": "sequential_dependency_007", "category": "sequential_dependency", "expected": -23, "result": {"answer": -23, "is_positive": false}, "correct": true, "error": null, "seconds": 0.20911742999987837}
+{"id": "sequential_dependency_008", "category": "sequential_dependency", "expected": 14, "result": {"answer": 14, "is_positive": true}, "correct": true, "error": null, "seconds": 0.16744157800030735}
+{"id": "sequential_dependency_009", "category": "sequential_dependency", "expected": -27, "result": {"answer": -27, "is_positive": false}, "correct": true, "error": null, "seconds": 0.20921192000014344}
+{"id": "sequential_dependency_010", "category": "sequential_dependency", "expected": -80, "result": {"answer": -80, "is_positive": false}, "correct": true, "error": null, "seconds": 0.20926862000032997}
+{"id": "sequential_dependency_011", "category": "sequential_dependency", "expected": -84, "result": {"answer": -84, "is_positive": false}, "correct": true, "error": null, "seconds": 0.20923681999965993}
+{"id": "sequential_dependency_012", "category": "sequential_dependency", "expected": 126, "result": {"answer": 126, "is_positive": true}, "correct": true, "error": null, "seconds": 0.20916298000020106}
+{"id": "sequential_dependency_013", "category": "sequential_dependency", "expected": 41, "result": {"answer": 41, "is_positive": true}, "correct": true, "error": null, "seconds": 0.16736690800007636}
+{"id": "sequential_dependency_014", "category": "sequential_dependency", "expected": -114, "result": {"answer": -114, "is_positive": false}, "correct": true, "error": null, "seconds": 0.2510338420001972}
+{"id": "sequential_dependency_015", "category": "sequential_dependency", "expected": -87, "result": {"answer": -87, "is_positive": false}, "correct": true, "error": null, "seconds": 0.2089036299998952}

@@ -20,15 +20,15 @@ def example_schema() -> dict[str, Any]:
             "expense_type": {
                 "type": "string",
                 "enum": ["meal", "travel", "equipment"],
-                "x-question": "What type of expense is this?",
+                "question": "What type of expense is this?",
             },
             "reimbursable": {
                 "type": "boolean",
-                "x-question": "Should this expense be reimbursed?",
+                "question": "Should this expense be reimbursed?",
             },
             "confidence": {
                 "type": "number",
-                "x-score": True,
+                "enum": [0.0, 0.25, 0.5, 0.75, 1.0],
                 "description": "Choose the confidence level.",
             },
         },
@@ -45,13 +45,17 @@ def main() -> None:
         default=os.environ.get("SGLANG_URL", "http://127.0.0.1:30000"),
     )
     parser.add_argument("--model", default=os.environ.get("SGLANG_MODEL"))
+    parser.add_argument(
+        "--tokenizer",
+        default=os.environ.get("TYPEAR_TOKENIZER"),
+        help="Tokenizer path or Hugging Face ID; normally discovered from SGLang",
+    )
     parser.add_argument("--mode", choices=("argmax", "sample"), default="argmax")
     parser.add_argument(
         "--execution", choices=("sequential", "batch"), default="sequential"
     )
     parser.add_argument("--temperature", type=float, default=1.0)
-    parser.add_argument("--other-max-new-tokens", type=int, default=64)
-    parser.add_argument("--other-temperature", type=float, default=0.0)
+    parser.add_argument("--numeric-max-digits", type=int, default=32)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--probabilities", action="store_true")
     parser.add_argument("--benchmark", action="store_true")
@@ -72,8 +76,8 @@ def main() -> None:
         execution=args.execution,
         temperature=args.temperature,
         seed=args.seed,
-        other_max_new_tokens=args.other_max_new_tokens,
-        other_temperature=args.other_temperature,
+        numeric_max_digits=args.numeric_max_digits,
+        tokenizer=args.tokenizer,
     )
     results = client.generate(
         context=receipt,

@@ -15,7 +15,7 @@ from typear_runtime import (
     run_sequential_decisions,
 )
 from typear_schema import (
-    SCORE_LEVELS,
+    MAX_ENUM_CHOICES,
     Decision,
     SchemaError,
     compile_json_schema,
@@ -26,7 +26,7 @@ from typear_sglang import SGLangClient, SGLangError, extract_candidate_logprobs
 __all__ = [
     "Choice",
     "Decision",
-    "SCORE_LEVELS",
+    "MAX_ENUM_CHOICES",
     "SGLangClient",
     "SGLangError",
     "SchemaError",

@@ -1,15 +1,22 @@
 # TypeAR: Type-Safe Decoding for Autoregressive LLMs
 
+### Updates
+
+- [2026/09/18] Added integer and float outputs through tokenizer-native
+  constrained decoding for JSON Schema `integer` and `number` fields.
+
+## Introduction
+
 [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev)
 highlights a useful idea: software needs decisions, not more strings to parse.
 TypeAR brings the same typed-decision interface to the open-source
 autoregressive models you already run—without a proprietary model API, model
 retraining, structured-output library, or manual KV-tensor management.
 
-1. **No undeclared escape.** Every decision stays inside its declared domain
-   unless the schema explicitly enables an open `x-other` branch.
-2. **Negligible output-token cost by default.** Closed decisions generate one
-   token; open text is generated only when `x-other` is selected.
+1. **No out-of-schema choices.** Every categorical decision stays inside its
+   declared domain.
+2. **Negligible output-token cost by default.** Categorical decisions generate
+   one token; numbers use bounded, tokenizer-native constrained decoding.
 3. **Linear input cost.** Prefix-cache reuse makes newly processed input grow
    approximately linearly with the unique context added across the workflow.
 4. **Sequential dependencies when needed.** In sequential mode, each later
@@ -31,6 +38,12 @@ compatible autoregressive model on your local GPU server. This example uses
 Qwen3.8-27B; follow the
 [Qwen3.8-27B SGLang deployment guide](https://lmsysorg.mintlify.app/cookbook/autoregressive/Qwen/Qwen3.8-27B)
 to start it with prefix caching enabled.
+
+Install the lightweight client-side tokenizer dependencies:
+
+```bash
+pip install -r requirements.txt
+```
 
 ### 2. Run TypeAR
 
@@ -56,16 +69,16 @@ result = client.generate(
             "expense_type": {
                 "type": "string",
                 "enum": ["meal", "travel", "equipment"],
-                "x-question": "What type of expense is this?",
+                "question": "What type of expense is this?",
             },
             "reimbursable": {
                 "type": "boolean",
-                "x-question": "Should this expense be reimbursed?",
+                "question": "Should this expense be reimbursed?",
             },
             "confidence": {
                 "type": "number",
-                "x-score": True,
-                "x-question": "How confident are you?",
+                "enum": [0.0, 0.25, 0.5, 0.75, 1.0],
+                "question": "How confident are you?",
             },
         },
         "required": ["expense_type", "reimbursable", "confidence"],
@@ -76,7 +89,7 @@ print(result)
 # {
 #     "expense_type": "travel",
 #     "reimbursable": True,
-#     "confidence": 0.8,
+#     "confidence": 0.75,
 # }
 ```
 
@@ -86,94 +99,66 @@ earlier fields.
 
 ## Supported schema
 
-TypeAR currently supports finite decision spaces:
+TypeAR supports both finite decisions and grammar-constrained numeric fields:
 
 | Field | Schema | Returned value |
 |---|---|---|
 | String choice | `{"type": "string", "enum": ["meal", "travel"]}` | `str` |
 | Integer choice | `{"type": "integer", "enum": [1, 2, 3]}` | `int` |
 | Number choice | `{"type": "number", "enum": [0.1, 0.5, 1.0]}` | `int` or `float` |
+| Open integer | `{"type": "integer"}` | `int` |
+| Open number | `{"type": "number"}` | `float` |
 | Boolean | `{"type": "boolean"}` | `bool` |
-| Score | `{"type": "number", "x-score": true}` | one of `0.0, 0.1, ..., 1.0` |
-| Open string choice | `{"type": "string", "enum": ["meal"], "x-other": true}` | enum value or bounded free text |
 
-Use `x-question` to tell the model what decision to make:
+Finite enums may contain at most 16 values.
+
+Use `question` to tell the model what decision to make:
 
 ```python
 {
     "type": "string",
     "enum": ["billing", "technical", "account"],
-    "x-question": "Which team should handle this ticket?",
+    "question": "Which team should handle this ticket?",
 }
 ```
 
-If `x-question` is absent, TypeAR uses `description`, then falls back to an
-instruction generated from the field name.
+If `question` is absent, TypeAR uses the standard JSON Schema `description`,
+then falls back to an instruction generated from the field name. The older
+`x-question` spelling remains accepted for compatibility.
 
-## Beyond finite domains
+## Numeric domains
 
 Ordinary TypeAR decisions come from finite sets because single-token control
-labels can cover an enum, a Boolean, or the eleven score levels from `0.0` to
-`1.0`. A typed field without a finite domain is rejected rather than guessed
-at.
-
-For a string enum, `x-other` can explicitly declare one open branch:
+labels can cover an enum or a Boolean. For integer and number fields without an
+enum, TypeAR scans the served model's tokenizer once and caches every token that
+can participate in a number. At each step it scores all tokenizer-native pieces
+that legally extend the current numeric prefix. A model may therefore emit
+`"5"`, `"54"`, or `"5461"` in one step without losing probability assigned to
+multi-character numeric tokens.
 
 ```python
-"expense_type": {
-    "type": "string",
-    "enum": ["meal", "travel", "equipment"],
-    "x-other": True,
-    "x-question": "What type of expense is this?",
+"answer": {
+    "type": "number",
+    "question": "What is 17.5 multiplied by 4?",
 }
 ```
 
-The first stage remains a constrained decision. TypeAR compiles the field to:
+The assistant emits the number directly and may select the model's native
+end-of-message token only after a valid number exists. Returned values are real
+Python `int` and `float` objects, not strings. `minimum` and `maximum` are
+optional standard JSON Schema constraints; when supplied, TypeAR validates the
+completed value against them.
+`numeric_max_digits` defaults to 32. Scientific notation is not currently
+accepted. When `return_probabilities=True`, an open numeric field returns
+`"probabilities": None`, because it has no finite final-value domain.
 
-```text
-Choice(
-  name="expense_type",
-  question="What type of expense is this?",
-  choices={"A":"meal","B":"travel","C":"equipment","D":"other"},
-  answer="
-```
-
-Selecting `A`, `B`, or `C` writes the declared value back exactly as before.
-Selecting `D` opens a string value and continues generation until a closing
-quote, with `other_max_new_tokens` as a safety cap:
-
-```text
-Choice(
-  name="expense_type",
-  question="What type of expense is this?",
-  choices={"A":"meal","B":"travel","C":"equipment","D":"other"},
-  answer="D",
-  value="conference registration"
-)
-```
-
-The escape is itself a declared single-token choice: free text is reachable
-only when the model selects `other`. The generated string is then written into
-the running prefix, so every later sequential decision can condition on it.
-In batch mode, multiple selected `other` branches are generated as a second
-native SGLang batch.
-
-The default open generation is deterministic and capped at 64 tokens. It can
-be configured independently from constrained decision sampling:
-
-```python
-client = TypeARClient(
-    "http://127.0.0.1:30000",
-    other_max_new_tokens=32,
-    other_temperature=0.2,
-)
-```
-
-When probabilities are requested, they remain probabilities over the declared
-first-stage branches, including `other`; TypeAR does not assign a fabricated
-probability to the subsequently generated string. The caller can also add a
-generated value to a later enum, turning it into a declared one-token choice
-in the next decision; TypeAR does not mutate schemas automatically.
+The numeric-token table is derived from the tokenizer reported by SGLang and
+stored under `~/.cache/typear/numeric_tokens`. Its cache key is the tokenizer
+content hash, so it is reused across questions and rebuilt after a tokenizer
+change. TypeAR also uses the tokenizer's native chat template with thinking
+disabled for constrained decisions. If the server reports a path that exists
+only on the remote host, pass the equivalent local path or Hugging Face ID as
+`TypeARClient(tokenizer="...")`.
 
 ## Sequential and batch execution
 
@@ -187,9 +172,11 @@ triage schema might select, in order:
 3. whether to roll back, conditioned on both earlier decisions;
 4. a confidence score.
 
-TypeAR appends each selected value to the running prefix before asking the next
-question. The final accumulated prompt is available as `client.last_prompt`, or
-can be printed with `print_final_prompt=True`.
+Each field becomes a new user turn, and the assistant directly emits its
+single-token label or constrained numeric value. The completed turn is appended
+before the next question, so later decisions see the complete decision history.
+The final accumulated prompt is available as `client.last_prompt`, or can be
+printed with `print_final_prompt=True`.
 
 When the fields are independent, run them as one native SGLang batch:
 
@@ -273,8 +260,8 @@ client = TypeARClient(
 )
 ```
 
-Temperature is applied to the candidate scores, not to unrestricted model
-generation.
+Temperature is applied to constrained candidate scores, including each step of
+numeric decoding.
 
 For a one-off request, use the convenience function:
 
@@ -293,9 +280,9 @@ result = run_schema(
 
 **Closed decisions generate one token per field, and prefix reuse makes the
 newly processed input grow approximately linearly with the unique context
-added across the workflow.** An `x-other` branch adds free-text output cost only
-when selected. The long original context is normally prefilled once rather
-than recomputed for every decision.
+added across the workflow.** An open number requires one constrained step per
+generated tokenizer token. The long original context is normally prefilled once
+rather than recomputed for every decision.
 
 For `D` decisions, an original context of `C` tokens, and roughly `S` newly
 appended tokens per decision:
@@ -303,17 +290,17 @@ appended tokens per decision:
 ```text
 without prefix reuse: O(D*C + D^2*S)
 with prefix reuse:    O(C + D*S)
-output generation:    O(D + E)
+output generation:    O(D + N)
 ```
 
-Here `E` is the total number of free-text tokens produced by selected
-`x-other` branches and is zero for a fully closed schema.
+Here `N` is the total number of generated tokenizer tokens in open numeric
+fields, including their end-of-message tokens, and is zero for a fully finite
+schema.
 
 For `K` independent closed batch decisions with question lengths
 `Q_1, ..., Q_K`, the corresponding prefill count is approximately
 `C + sum(Q_k)`, followed by one batched decode step that produces `K` output
-tokens. Selected open branches add their `E` free-text tokens in a second
-batched generation step.
+tokens. Open numeric fields require additional constrained token steps.
 
 These are prefill token-position counts, not exact GPU FLOPs. New tokens still
 attend to the cached prefix, and real latency also depends on cache alignment,

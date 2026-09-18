@@ -11,7 +11,11 @@ from dataclasses import dataclass
 from string import ascii_uppercase, digits
 from typing import Any, Mapping, Sequence
 
-from typear_schema import SCORE_LEVELS, SchemaError, compile_json_schema
+from typear_schema import (
+    MAX_ENUM_CHOICES,
+    SchemaError,
+    compile_json_schema,
+)
 from typear_sglang import SGLangClient
 
 
@@ -26,34 +30,61 @@ class Choice:
     choices: Mapping[str, Any]
     name: str | None = None
     syntax: str = "Choice"
-    allow_other: bool = False
+    numeric_type: str | None = None
+    minimum: int | float | None = None
+    maximum: int | float | None = None
 
     def __post_init__(self) -> None:
-        if not self.choices:
+        if not self.choices and self.numeric_type is None:
             raise ValueError("Choice.choices must not be empty")
+        if self.numeric_type not in {None, "integer", "number"}:
+            raise ValueError("numeric_type must be None, 'integer', or 'number'")
+        if self.numeric_type is not None and self.choices:
+            raise ValueError("Open numeric choices must be empty")
+        if len(self.choices) > MAX_ENUM_CHOICES:
+            raise ValueError(
+                f"Choice has {len(self.choices)} values; "
+                f"the maximum is {MAX_ENUM_CHOICES}"
+            )
         if any(not label for label in self.choices):
             raise ValueError("Choice labels must be non-empty strings")
-        if self.allow_other and sum(
-            type(value) is str and value == "other"
-            for value in self.choices.values()
-        ) != 1:
-            raise ValueError(
-                "Choice with allow_other=True must contain exactly one 'other' value"
-            )
 
     def opening_text(self) -> str:
         question = json.dumps(self.question, ensure_ascii=False)
-        choices = json.dumps(
-            dict(self.choices), ensure_ascii=False, separators=(",", ":")
-        )
+        if self.numeric_type is not None:
+            attributes = []
+            if self.name is not None:
+                attributes.append(f"name={json.dumps(self.name, ensure_ascii=False)}")
+            if self.minimum is not None:
+                attributes.append(f"minimum={json.dumps(self.minimum)}")
+            if self.maximum is not None:
+                attributes.append(f"maximum={json.dumps(self.maximum)}")
+            metadata = f"{self.syntax}({', '.join(attributes)})"
+            instruction = (
+                "Return only the signed integer answer."
+                if self.numeric_type == "integer"
+                else "Return only the signed number answer."
+            )
+            return "\n".join(
+                [
+                    metadata,
+                    instruction,
+                    f"Question: {self.question}",
+                ]
+            )
+
         lines = [f"{self.syntax}("]
         if self.name is not None:
             lines.append(f"  name={json.dumps(self.name, ensure_ascii=False)},")
+        lines.append(f"  question={question},")
+        choices = json.dumps(
+            dict(self.choices), ensure_ascii=False, separators=(",", ":")
+        )
         lines.extend(
             [
-                f"  question={question},",
                 f"  choices={choices},",
-                '  answer="',
+                '  instruction="Answer the question using only the best label.",',
+                ")",
             ]
         )
         return "\n".join(lines)
@@ -75,20 +106,27 @@ class TypeARClient:
         seed: int | None = None,
         timeout: float = 120.0,
         label_pool: Sequence[str] | None = None,
-        other_max_new_tokens: int = 64,
-        other_temperature: float = 0.0,
+        numeric_max_digits: int = 32,
+        tokenizer: str | None = None,
+        numeric_cache_dir: str | os.PathLike[str] | None = None,
     ) -> None:
         _validate_decoding(mode, temperature)
         _validate_execution(execution)
-        _validate_other_generation(other_max_new_tokens, other_temperature)
-        self.sglang = SGLangClient(base_url, model, timeout)
+        if type(numeric_max_digits) is not int or numeric_max_digits <= 0:
+            raise ValueError("numeric_max_digits must be a positive integer")
+        self.sglang = SGLangClient(
+            base_url,
+            model,
+            timeout,
+            tokenizer=tokenizer,
+            numeric_cache_dir=numeric_cache_dir,
+        )
         self.mode = mode
         self.execution = execution
         self.temperature = temperature
         self.rng = random.Random(seed)
         self.label_pool = tuple(label_pool or self.DEFAULT_LABEL_POOL)
-        self.other_max_new_tokens = other_max_new_tokens
-        self.other_temperature = other_temperature
+        self.numeric_max_digits = numeric_max_digits
         self.label_token_map: dict[str, int] = {}
         self.last_prompt: str | None = None
         self.last_prompts: list[str] = []
@@ -123,14 +161,17 @@ class TypeARClient:
         properties = schema.get("properties")
         if isinstance(properties, Mapping):
             decisions = compile_json_schema(schema)
-            labels = self._control_labels(max(len(item.choices) for item in decisions))
+            finite_sizes = [len(item.choices) for item in decisions if item.choices]
+            labels = self._control_labels(max(finite_sizes)) if finite_sizes else []
             return [
                 Choice(
                     question=item.question,
                     choices=dict(zip(labels, item.choices)),
                     name=item.name,
                     syntax=item.syntax,
-                    allow_other=item.allow_other,
+                    numeric_type=item.numeric_type,
+                    minimum=item.minimum,
+                    maximum=item.maximum,
                 )
                 for item in decisions
             ]
@@ -172,6 +213,11 @@ class TypeARClient:
                     )
                 if len(set(values)) != len(values):
                     raise SchemaError(f"choices for {name!r} must be unique")
+                if len(values) > MAX_ENUM_CHOICES:
+                    raise SchemaError(
+                        f"choices for {name!r} has {len(values)} values; "
+                        f"the maximum is {MAX_ENUM_CHOICES}"
+                    )
             elif kind == "bool":
                 if "choices" in prop:
                     raise SchemaError(
@@ -179,17 +225,10 @@ class TypeARClient:
                         "it automatically uses true/false"
                     )
                 values = [True, False]
-            elif kind == "score":
-                if "choices" in prop:
-                    raise SchemaError(
-                        f"score property {name!r} must not define choices; "
-                        "it automatically uses 0.0 through 1.0"
-                    )
-                values = list(SCORE_LEVELS)
             else:
                 raise SchemaError(
-                    f"properties[{index}].type must be 'choice', 'bool', or "
-                    f"'score', got {kind!r}"
+                    f"properties[{index}].type must be 'choice' or 'bool', "
+                    f"got {kind!r}"
                 )
             max_choices = max(max_choices, len(values))
             normalized.append((name, kind, question, values))
@@ -203,8 +242,6 @@ class TypeARClient:
                 syntax=(
                     "Bool"
                     if kind == "bool"
-                    else "Score"
-                    if kind == "score"
                     else "Choice"
                 ),
             )
@@ -236,8 +273,7 @@ class TypeARClient:
                 active_mode,
                 active_temperature,
                 self.rng,
-                self.other_max_new_tokens,
-                self.other_temperature,
+                self.numeric_max_digits,
             )
             self.last_prompts = [self.last_prompt]
         else:
@@ -248,8 +284,7 @@ class TypeARClient:
                 active_mode,
                 active_temperature,
                 self.rng,
-                self.other_max_new_tokens,
-                self.other_temperature,
+                self.numeric_max_digits,
             )
             self.last_prompt = None
 
@@ -258,10 +293,14 @@ class TypeARClient:
             assert decision.name is not None
             value = row["value"]
             if return_probabilities:
-                probabilities = {
-                    decision.choices[label]: probability
-                    for label, probability in row["probabilities"].items()
-                }
+                probabilities = (
+                    None
+                    if decision.numeric_type is not None
+                    else {
+                        decision.choices[label]: probability
+                        for label, probability in row["probabilities"].items()
+                    }
+                )
                 output[decision.name] = {
                     "value": value,
                     "probabilities": probabilities,
@@ -314,28 +353,187 @@ def _validate_execution(execution: str) -> None:
         raise ValueError("execution must be 'sequential' or 'batch'")
 
 
-def _validate_other_generation(max_new_tokens: int, temperature: float) -> None:
-    if type(max_new_tokens) is not int or max_new_tokens <= 0:
-        raise ValueError("other_max_new_tokens must be a positive integer")
-    if not math.isfinite(temperature) or temperature < 0:
-        raise ValueError("other_temperature must be finite and >= 0")
+def _numeric_candidates(
+    text: str, numeric_type: str, max_digits: int
+) -> tuple[str, ...]:
+    """Return the next characters admitted by a small JSON-number state machine."""
+    digit_count = sum(char.isdigit() for char in text)
+    if digit_count >= max_digits:
+        return ()
+    if text in {"", "-"}:
+        return tuple(("-" if not text else "") + digits)
+
+    unsigned = text[1:] if text.startswith("-") else text
+    if numeric_type == "integer":
+        if unsigned == "0":
+            return ()
+        return tuple(digits)
+
+    if "." in unsigned:
+        return tuple(digits)
+    if unsigned == "0":
+        return (".",)
+    return tuple(digits + ".")
 
 
-def _normalize_other_text(text: str, decision_name: str | None) -> str:
-    # SGLang normally trims the matched stop string. Also trim it here for
-    # compatibility with response variants that include the delimiter.
-    value = text.split('"', 1)[0].strip()
-    if not value:
+def _numeric_text_is_complete(text: str, numeric_type: str) -> bool:
+    if not text or text == "-":
+        return False
+    unsigned = text[1:] if text.startswith("-") else text
+    if not unsigned or (
+        len(unsigned) > 1
+        and unsigned.startswith("0")
+        and not unsigned.startswith("0.")
+    ):
+        return False
+    if numeric_type == "integer":
+        return unsigned.isdigit()
+    if "." not in unsigned:
+        return unsigned.isdigit()
+    integer, fraction = unsigned.split(".", 1)
+    return integer.isdigit() and bool(fraction) and fraction.isdigit()
+
+
+def _numeric_text_is_prefix(text: str, numeric_type: str) -> bool:
+    """Whether text can still be extended into a supported JSON-style number."""
+    if text in {"", "-"}:
+        return True
+    unsigned = text[1:] if text.startswith("-") else text
+    if not unsigned or unsigned.count(".") > 1:
+        return False
+    integer, separator, fraction = unsigned.partition(".")
+    if not integer.isdigit():
+        return False
+    if len(integer) > 1 and integer.startswith("0"):
+        return False
+    if numeric_type == "integer":
+        return not separator
+    return not separator or not fraction or fraction.isdigit()
+
+
+def _numeric_transition(
+    text: str, piece: str, numeric_type: str, max_digits: int
+) -> tuple[str, bool] | None:
+    """Apply one tokenizer piece, rejecting grammar-invalid continuations."""
+    if '"' in piece:
+        return None
+    value_text = text + piece
+    if sum(char.isdigit() for char in value_text) > max_digits:
+        return None
+    return (
+        (value_text, False)
+        if _numeric_text_is_prefix(value_text, numeric_type)
+        else None
+    )
+
+
+def _numeric_token_candidates(
+    client: SGLangClient, text: str, numeric_type: str, max_digits: int
+) -> dict[int, tuple[str, str, bool]]:
+    """Map valid next token IDs to (decoded piece, next text, is finished)."""
+    if hasattr(client, "numeric_token_pieces"):
+        pieces = client.numeric_token_pieces()
+    else:
+        # Compatibility for small custom clients written against the first
+        # prototype. Native SGLangClient always uses its model-derived table.
+        pieces = [
+            client.single_token(piece)
+            for piece in _numeric_candidates(text, numeric_type, max_digits)
+        ]
+    candidates: dict[int, tuple[str, str, bool]] = {}
+    for token_id, piece in pieces:
+        transition = _numeric_transition(text, piece, numeric_type, max_digits)
+        if transition is not None:
+            next_text, finished = transition
+            candidates[int(token_id)] = (piece, next_text, finished)
+    return candidates
+
+
+def _parse_numeric_value(text: str, decision: Choice) -> int | float:
+    if not _numeric_text_is_complete(text, decision.numeric_type or ""):
+        raise ValueError(f"Generated invalid {decision.numeric_type}: {text!r}")
+    value: int | float = (
+        int(text) if decision.numeric_type == "integer" else float(text)
+    )
+    if not math.isfinite(float(value)):
+        raise ValueError(f"Generated non-finite number for {decision.name!r}")
+    if decision.minimum is not None and value < decision.minimum:
         raise ValueError(
-            f"Open branch for {decision_name!r} generated an empty string"
+            f"Generated value {value} is below minimum {decision.minimum} "
+            f"for {decision.name!r}"
+        )
+    if decision.maximum is not None and value > decision.maximum:
+        raise ValueError(
+            f"Generated value {value} is above maximum {decision.maximum} "
+            f"for {decision.name!r}"
         )
     return value
 
 
-def _append_json_string_tail(prefix: str, value: str) -> str:
-    """Close a JSON-style string whose opening quote is already in prefix."""
-    encoded = json.dumps(value, ensure_ascii=False)
-    return prefix + encoded[1:] + "\n)"
+def _decode_numeric(
+    client: SGLangClient,
+    prefix: str,
+    decision: Choice,
+    mode: str,
+    temperature: float,
+    rng: random.Random,
+    max_digits: int,
+) -> tuple[int | float, str, str]:
+    end_token_id, end_token_text = client.end_of_message_token()
+    text = ""
+    step = 0
+    while True:
+        candidates = _numeric_token_candidates(
+            client, text, decision.numeric_type or "", max_digits
+        )
+        if _numeric_text_is_complete(text, decision.numeric_type or ""):
+            candidates[end_token_id] = (end_token_text, text, True)
+        if not candidates:
+            raise ValueError(
+                f"Could not complete numeric field {decision.name!r} within "
+                f"{max_digits} digits"
+            )
+        ids = list(candidates)
+        by_id, meta, elapsed = client.score_candidates(prefix + text, ids)
+        raw = {str(token_id): by_id[token_id] for token_id in ids}
+        probs = candidate_softmax(
+            raw, temperature if mode == "sample" else 1.0
+        )
+        selected_key = (
+            max(raw, key=raw.__getitem__)
+            if mode == "argmax"
+            else _sample(probs, rng)
+        )
+        selected_id = int(selected_key)
+        selected_piece, next_text, finished = candidates[selected_id]
+        ranked = sorted(ids, key=by_id.__getitem__, reverse=True)[:20]
+        LOG.info(
+            "numeric name=%s step=%d candidates=%d top_candidates=%s "
+            "selected_id=%d selected=%r elapsed=%.4fs cached_tokens=%s",
+            decision.name,
+            step,
+            len(ids),
+            [
+                {
+                    "id": token_id,
+                    "text": candidates[token_id][0],
+                    "logprob": by_id[token_id],
+                    "probability": probs[str(token_id)],
+                }
+                for token_id in ranked
+            ],
+            selected_id,
+            selected_piece,
+            elapsed,
+            meta.get("cached_tokens"),
+        )
+        LOG.debug("numeric candidate_logprobs=%s probabilities=%s", raw, probs)
+        text = next_text
+        if finished:
+            value = _parse_numeric_value(text, decision)
+            completed = prefix + text + end_token_text
+            return value, completed, text
+        step += 1
 
 
 def _execute_decisions(
@@ -345,14 +543,39 @@ def _execute_decisions(
     mode: str,
     temperature: float,
     rng: random.Random,
-    other_max_new_tokens: int = 64,
-    other_temperature: float = 0.0,
+    numeric_max_digits: int = 32,
 ) -> tuple[list[dict], str]:
-    prefix = context.rstrip() + "\n\n"
+    messages: list[dict[str, str]] = []
+    prefix = ""
     results: list[dict] = []
 
     for index, decision in enumerate(decisions):
-        prefix += decision.opening_text()
+        user_content = decision.opening_text()
+        if index == 0:
+            user_content = context.rstrip() + "\n\n" + user_content
+        messages.append({"role": "user", "content": user_content})
+        prefix = client.render_chat(messages, add_generation_prompt=True)
+        if decision.numeric_type is not None:
+            semantic_value, prefix, generated_text = _decode_numeric(
+                client,
+                prefix,
+                decision,
+                mode,
+                temperature,
+                rng,
+                numeric_max_digits,
+            )
+            messages.append({"role": "assistant", "content": generated_text})
+            results.append(
+                {
+                    "name": decision.name,
+                    "question": decision.question,
+                    "label": None,
+                    "value": semantic_value,
+                    "probabilities": None,
+                }
+            )
+            continue
         label_tokens = {label: client.single_token(label) for label in decision.choices}
         ids = [token_id for token_id, _ in label_tokens.values()]
         if len(set(ids)) != len(ids):
@@ -392,34 +615,8 @@ def _execute_decisions(
 
         # Send the growing full prefix again. SGLang—not this client—owns and
         # recovers all KV tensors through its RadixAttention prefix cache.
-        if decision.allow_other and semantic_value == "other":
-            prefix += selected_text + '",\n  value="'
-            generated, other_meta, other_elapsed = client.generate_text(
-                prefix,
-                max_new_tokens=other_max_new_tokens,
-                temperature=other_temperature,
-                stop='"',
-            )
-            semantic_value = _normalize_other_text(generated, decision.name)
-            prefix = _append_json_string_tail(prefix, semantic_value)
-            LOG.info(
-                "decision=%d open_value=%r elapsed=%.4fs cached_tokens=%s",
-                index,
-                semantic_value,
-                other_elapsed,
-                other_meta.get("cached_tokens"),
-            )
-        else:
-            prefix += (
-                selected_text
-                + '",\n  value='
-                + json.dumps(
-                    semantic_value, ensure_ascii=False, separators=(",", ":")
-                )
-                + "\n)"
-            )
-        if index + 1 < len(decisions):
-            prefix += "\n\n"
+        messages.append({"role": "assistant", "content": selected_text})
+        prefix = client.render_chat(messages, add_generation_prompt=False)
         results.append(
             {
                 "name": decision.name,
@@ -439,15 +636,48 @@ def _execute_batch_decisions(
     mode: str,
     temperature: float,
     rng: random.Random,
-    other_max_new_tokens: int = 64,
-    other_temperature: float = 0.0,
+    numeric_max_digits: int = 32,
 ) -> tuple[list[dict], list[str]]:
-    shared_prefix = context.rstrip() + "\n\n"
+    shared_messages = [{"role": "user", "content": context.rstrip()}]
+    shared_prefix = client.render_chat(
+        shared_messages, add_generation_prompt=False
+    )
     label_tokens_by_decision: list[dict[str, tuple[int, str]]] = []
     candidate_ids: list[list[int]] = []
     prompts: list[str] = []
 
+    finite_indexes: list[int] = []
+    numeric_results: dict[int, tuple[dict, str]] = {}
     for index, decision in enumerate(decisions):
+        messages = shared_messages + [
+            {"role": "user", "content": decision.opening_text()}
+        ]
+        prompt = client.render_chat(messages, add_generation_prompt=True)
+        if decision.numeric_type is not None:
+            value, _completed, generated_text = _decode_numeric(
+                client,
+                prompt,
+                decision,
+                mode,
+                temperature,
+                rng,
+                numeric_max_digits,
+            )
+            numeric_results[index] = (
+                {
+                    "name": decision.name,
+                    "question": decision.question,
+                    "label": None,
+                    "value": value,
+                    "probabilities": None,
+                },
+                client.render_chat(
+                    messages
+                    + [{"role": "assistant", "content": generated_text}],
+                    add_generation_prompt=False,
+                ),
+            )
+            continue
         label_tokens = {
             label: client.single_token(label) for label in decision.choices
         }
@@ -456,7 +686,8 @@ def _execute_batch_decisions(
             raise ValueError(f"Decision {index} has labels with duplicate token IDs: {ids}")
         label_tokens_by_decision.append(label_tokens)
         candidate_ids.append(ids)
-        prompts.append(shared_prefix + decision.opening_text())
+        prompts.append(prompt)
+        finite_indexes.append(index)
         LOG.info(
             "batch_decision=%d name=%s candidate_token_ids=%s",
             index,
@@ -472,11 +703,11 @@ def _execute_batch_decisions(
 
     results: list[dict] = []
     completed_prompts: list[str] = []
-    open_indexes: list[int] = []
-    open_prefixes: list[str] = []
-    for index, (decision, label_tokens, (by_id, meta)) in enumerate(
-        zip(decisions, label_tokens_by_decision, scored)
+    for finite_index, (decision_index, label_tokens, (by_id, meta)) in enumerate(
+        zip(finite_indexes, label_tokens_by_decision, scored)
     ):
+        index = decision_index
+        decision = decisions[index]
         raw = {
             label: by_id[token_id]
             for label, (token_id, _) in label_tokens.items()
@@ -490,21 +721,14 @@ def _execute_batch_decisions(
         )
         selected_text = label_tokens[selected][1]
         semantic_value = decision.choices[selected]
-        if decision.allow_other and semantic_value == "other":
-            open_prefix = prompts[index] + selected_text + '",\n  value="'
-            completed_prompts.append(open_prefix)
-            open_indexes.append(index)
-            open_prefixes.append(open_prefix)
-        else:
-            completed_prompts.append(
-                prompts[index]
-                + selected_text
-                + '",\n  value='
-                + json.dumps(
-                    semantic_value, ensure_ascii=False, separators=(",", ":")
-                )
-                + "\n)"
+        completed_prompts.append(
+            client.render_chat(
+                shared_messages
+                + [{"role": "user", "content": decision.opening_text()}]
+                + [{"role": "assistant", "content": selected_text}],
+                add_generation_prompt=False,
             )
+        )
         LOG.info("batch_decision=%d raw_candidate_logprobs=%s", index, raw)
         LOG.info(
             "batch_decision=%d renormalized_probabilities=%s", index, probabilities
@@ -528,30 +752,18 @@ def _execute_batch_decisions(
             }
         )
 
-    if open_prefixes:
-        generated_rows, other_elapsed = client.generate_text_batch(
-            open_prefixes,
-            max_new_tokens=other_max_new_tokens,
-            temperature=other_temperature,
-            stop='"',
-        )
-        for result_index, open_prefix, (generated, meta) in zip(
-            open_indexes, open_prefixes, generated_rows
-        ):
-            decision = decisions[result_index]
-            semantic_value = _normalize_other_text(generated, decision.name)
-            results[result_index]["value"] = semantic_value
-            completed_prompts[result_index] = _append_json_string_tail(
-                open_prefix, semantic_value
-            )
-            LOG.info(
-                "batch_decision=%d open_value=%r batch_elapsed=%.4fs "
-                "cached_tokens=%s",
-                result_index,
-                semantic_value,
-                other_elapsed,
-                meta.get("cached_tokens"),
-            )
+    if numeric_results:
+        finite_rows = iter(zip(results, completed_prompts))
+        merged_results: list[dict] = []
+        merged_prompts: list[str] = []
+        for index in range(len(decisions)):
+            if index in numeric_results:
+                row, prompt = numeric_results[index]
+            else:
+                row, prompt = next(finite_rows)
+            merged_results.append(row)
+            merged_prompts.append(prompt)
+        results, completed_prompts = merged_results, merged_prompts
     return results, completed_prompts
 
 
@@ -577,15 +789,19 @@ def run_sequential_decisions(
     base_url: str | None = None,
     model: str | None = None,
     seed: int | None = None,
-    other_max_new_tokens: int = 64,
-    other_temperature: float = 0.0,
+    numeric_max_digits: int = 32,
+    tokenizer: str | None = None,
+    numeric_cache_dir: str | os.PathLike[str] | None = None,
     print_final_prompt: bool = True,
 ) -> list[dict]:
     _validate_decoding(mode, temperature)
-    _validate_other_generation(other_max_new_tokens, other_temperature)
+    if type(numeric_max_digits) is not int or numeric_max_digits <= 0:
+        raise ValueError("numeric_max_digits must be a positive integer")
     client = SGLangClient(
         base_url or os.environ.get("SGLANG_URL", "http://127.0.0.1:30000"),
         model or os.environ.get("SGLANG_MODEL"),
+        tokenizer=tokenizer,
+        numeric_cache_dir=numeric_cache_dir,
     )
     results, prefix = _execute_decisions(
         client,
@@ -594,8 +810,7 @@ def run_sequential_decisions(
         mode,
         temperature,
         random.Random(seed),
-        other_max_new_tokens,
-        other_temperature,
+        numeric_max_digits,
     )
     if print_final_prompt:
         _print_final_prompt(prefix)
@@ -613,8 +828,9 @@ def run_schema(
     model: str | None = None,
     seed: int | None = None,
     return_probabilities: bool = False,
-    other_max_new_tokens: int = 64,
-    other_temperature: float = 0.0,
+    numeric_max_digits: int = 32,
+    tokenizer: str | None = None,
+    numeric_cache_dir: str | os.PathLike[str] | None = None,
     print_final_prompt: bool = False,
 ) -> dict[str, Any]:
     client = TypeARClient(
@@ -624,8 +840,9 @@ def run_schema(
         execution=execution,
         temperature=temperature,
         seed=seed,
-        other_max_new_tokens=other_max_new_tokens,
-        other_temperature=other_temperature,
+        numeric_max_digits=numeric_max_digits,
+        tokenizer=tokenizer,
+        numeric_cache_dir=numeric_cache_dir,
     )
     return client.generate(
         context=context,
