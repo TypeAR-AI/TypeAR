@@ -1,18 +1,27 @@
 # TypeAR: Type-Safe Decoding for Autoregressive LLMs
 
+### Updates
+
+- [2026/09/18] Added integer and float outputs through tokenizer-native
+  constrained decoding for JSON Schema `integer` and `number` fields.
+
+## Introduction
+
 [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev)
 highlights a useful idea: software needs decisions, not more strings to parse.
 TypeAR brings the same typed-decision interface to the open-source
 autoregressive models you already run—without a proprietary model API, model
 retraining, structured-output library, or manual KV-tensor management.
 
-1. **No out-of-schema hallucinations.** Every possible output value is
-   specified by the schema.
-2. **Negligible output-token cost.** Each decision generates exactly one token.
+1. **No out-of-schema choices.** Every categorical decision stays inside its
+   declared domain.
+2. **Negligible output-token cost by default.** Categorical decisions generate
+   one token; numbers use bounded, tokenizer-native constrained decoding.
 3. **Linear input cost.** Prefix-cache reuse makes newly processed input grow
    approximately linearly with the unique context added across the workflow.
-4. **Decision dependencies.** Each later decision is conditioned on the values
-   selected by all previous decisions.
+4. **Sequential dependencies when needed.** In sequential mode, each later
+   decision is conditioned on all previous values; batch mode runs independent
+   decisions concurrently.
 5. **Made for open autoregressive LLMs.** TypeAR works with any compatible,
    pretrained open-source model served by SGLang.
 
@@ -29,6 +38,12 @@ compatible autoregressive model on your local GPU server. This example uses
 Qwen3.8-27B; follow the
 [Qwen3.8-27B SGLang deployment guide](https://lmsysorg.mintlify.app/cookbook/autoregressive/Qwen/Qwen3.8-27B)
 to start it with prefix caching enabled.
+
+Install the lightweight client-side tokenizer dependencies:
+
+```bash
+pip install -r requirements.txt
+```
 
 ### 2. Run TypeAR
 
@@ -54,16 +69,16 @@ result = client.generate(
             "expense_type": {
                 "type": "string",
                 "enum": ["meal", "travel", "equipment"],
-                "x-question": "What type of expense is this?",
+                "question": "What type of expense is this?",
             },
             "reimbursable": {
                 "type": "boolean",
-                "x-question": "Should this expense be reimbursed?",
+                "question": "Should this expense be reimbursed?",
             },
             "confidence": {
                 "type": "number",
-                "x-score": True,
-                "x-question": "How confident are you?",
+                "enum": [0.0, 0.25, 0.5, 0.75, 1.0],
+                "question": "How confident are you?",
             },
         },
         "required": ["expense_type", "reimbursable", "confidence"],
@@ -74,7 +89,7 @@ print(result)
 # {
 #     "expense_type": "travel",
 #     "reimbursable": True,
-#     "confidence": 0.8,
+#     "confidence": 0.75,
 # }
 ```
 
@@ -82,30 +97,69 @@ Python dictionary insertion order determines the decision order. Each later
 field is conditioned on the original context and the values selected for all
 earlier fields.
 
+## Testing
+
+To run the 128-case numeric regression, first serve `qwen3.8-27b` with SGLang
+at `http://127.0.0.1:30000`, then run:
+
+```bash
+python3 _numeric_eval.py
+```
+
+The evaluation covers integer and number extraction, arithmetic, negative
+integers, and sequential dependencies. Its deterministic test cases are stored
+in `evals/numeric_eval_cases.jsonl`; the script writes detailed results to
+`evals/numeric_eval_formal_results.jsonl` and prints an aggregate summary.
+
 ## Supported schema
 
-TypeAR currently supports finite decision spaces:
+TypeAR supports both finite decisions and grammar-constrained numeric fields:
 
 | Field | Schema | Returned value |
 |---|---|---|
 | String choice | `{"type": "string", "enum": ["meal", "travel"]}` | `str` |
 | Integer choice | `{"type": "integer", "enum": [1, 2, 3]}` | `int` |
 | Number choice | `{"type": "number", "enum": [0.1, 0.5, 1.0]}` | `int` or `float` |
+| Integer | `{"type": "integer"}` | `int` |
+| Number | `{"type": "number"}` | `float` |
 | Boolean | `{"type": "boolean"}` | `bool` |
-| Score | `{"type": "number", "x-score": true}` | one of `0.0, 0.1, ..., 1.0` |
 
-Use `x-question` to tell the model what decision to make:
+Finite enums may contain at most 16 values.
+
+For example, ask for a numeric answer without enumerating every possible value:
+
+```python
+result = client.generate(
+    context="Calculate the requested value accurately.",
+    schema={
+        "type": "object",
+        "properties": {
+            "answer": {
+                "type": "number",
+                "question": "What is 17.5 multiplied by 4?",
+            },
+        },
+        "required": ["answer"],
+    },
+)
+
+print(result)
+# {"answer": 70.0}
+```
+
+Use `question` to tell the model what decision to make:
 
 ```python
 {
     "type": "string",
     "enum": ["billing", "technical", "account"],
-    "x-question": "Which team should handle this ticket?",
+    "question": "Which team should handle this ticket?",
 }
 ```
 
-If `x-question` is absent, TypeAR uses `description`, then falls back to an
-instruction generated from the field name.
+If `question` is absent, TypeAR uses the standard JSON Schema `description`,
+then falls back to an instruction generated from the field name. The older
+`x-question` spelling remains accepted for compatibility.
 
 ## Sequential and batch execution
 
@@ -119,9 +173,11 @@ triage schema might select, in order:
 3. whether to roll back, conditioned on both earlier decisions;
 4. a confidence score.
 
-TypeAR appends each selected value to the running prefix before asking the next
-question. The final accumulated prompt is available as `client.last_prompt`, or
-can be printed with `print_final_prompt=True`.
+Each field becomes a new user turn, and the assistant directly emits its
+single-token label or constrained numeric value. The completed turn is appended
+before the next question, so later decisions see the complete decision history.
+The final accumulated prompt is available as `client.last_prompt`, or can be
+printed with `print_final_prompt=True`.
 
 When the fields are independent, run them as one native SGLang batch:
 
@@ -205,8 +261,8 @@ client = TypeARClient(
 )
 ```
 
-Temperature is applied to the candidate scores, not to unrestricted model
-generation.
+Temperature is applied to constrained candidate scores, including each step of
+numeric decoding.
 
 For a one-off request, use the convenience function:
 
@@ -223,10 +279,11 @@ result = run_schema(
 
 ## Cost analysis
 
-**Output generation is negligible—one token per field—and prefix reuse makes
-the newly processed input grow approximately linearly with the unique context
-added across the workflow.** The long original context is normally prefilled
-once rather than recomputed for every decision.
+**Closed decisions generate one token per field, and prefix reuse makes the
+newly processed input grow approximately linearly with the unique context
+added across the workflow.** An open number requires one constrained step per
+generated tokenizer token. The long original context is normally prefilled once
+rather than recomputed for every decision.
 
 For `D` decisions, an original context of `C` tokens, and roughly `S` newly
 appended tokens per decision:
@@ -234,12 +291,17 @@ appended tokens per decision:
 ```text
 without prefix reuse: O(D*C + D^2*S)
 with prefix reuse:    O(C + D*S)
-output generation:    O(D)
+output generation:    O(D + N)
 ```
 
-For `K` independent batch decisions with question lengths `Q_1, ..., Q_K`, the
-corresponding prefill count is approximately `C + sum(Q_k)`, followed by one
-batched decode step that produces `K` output tokens.
+Here `N` is the total number of generated tokenizer tokens in open numeric
+fields, including their end-of-message tokens, and is zero for a fully finite
+schema.
+
+For `K` independent closed batch decisions with question lengths
+`Q_1, ..., Q_K`, the corresponding prefill count is approximately
+`C + sum(Q_k)`, followed by one batched decode step that produces `K` output
+tokens. Open numeric fields require additional constrained token steps.
 
 These are prefill token-position counts, not exact GPU FLOPs. New tokens still
 attend to the cached prefix, and real latency also depends on cache alignment,

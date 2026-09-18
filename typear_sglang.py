@@ -6,7 +6,10 @@ import json
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any, Mapping, Sequence
+
+from typear_numeric import load_numeric_token_table
 
 
 class SGLangError(RuntimeError):
@@ -19,11 +22,26 @@ class SGLangClient:
         base_url: str = "http://127.0.0.1:30000",
         model: str | None = None,
         timeout: float = 120.0,
+        tokenizer: str | None = None,
+        numeric_cache_dir: str | Path | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
+        self.tokenizer = tokenizer
+        self.numeric_cache_dir = numeric_cache_dir
         self._label_tokens: dict[str, tuple[int, str]] = {}
+        self._model_info_cache: Mapping[str, Any] | None = None
+        self._numeric_tokens: list[tuple[int, str]] | None = None
+        self._chat_tokenizer: Any | None = None
+
+    def _model_info(self) -> Mapping[str, Any]:
+        if self._model_info_cache is None:
+            response = self._request("/get_model_info")
+            if not isinstance(response, Mapping):
+                raise SGLangError("/get_model_info returned a non-object response")
+            self._model_info_cache = response
+        return self._model_info_cache
 
     def _request(
         self,
@@ -63,7 +81,7 @@ class SGLangClient:
     def _tokenizer_model(self) -> str:
         if self.model:
             return self.model
-        info = self._request("/get_model_info")
+        info = self._model_info()
         for key in ("served_model_name", "model_path", "tokenizer_path"):
             value = info.get(key) if isinstance(info, Mapping) else None
             if isinstance(value, str) and value:
@@ -73,6 +91,85 @@ class SGLangClient:
             "Could not discover a tokenizer model from /get_model_info; "
             "pass model=... or set SGLANG_MODEL"
         )
+
+    def _tokenizer_source(self) -> str:
+        if self.tokenizer:
+            return self.tokenizer
+        info = self._model_info()
+        for key in ("tokenizer_path", "model_path"):
+            value = info.get(key)
+            if isinstance(value, str) and value:
+                return value
+        if self.model:
+            return self.model
+        raise SGLangError(
+            "Could not discover the tokenizer used by SGLang; pass tokenizer=..."
+        )
+
+    def numeric_token_pieces(self) -> list[tuple[int, str]]:
+        """Return the cached numeric-token table for the served model tokenizer."""
+        if self._numeric_tokens is None:
+            self._numeric_tokens = load_numeric_token_table(
+                self._tokenizer_source(), self.numeric_cache_dir
+            )
+        return self._numeric_tokens
+
+    def _get_chat_tokenizer(self) -> Any:
+        if self._chat_tokenizer is None:
+            try:
+                from transformers import AutoTokenizer
+            except ImportError as exc:
+                raise SGLangError(
+                    "Chat-template rendering requires transformers; install it "
+                    "with `pip install transformers`"
+                ) from exc
+            try:
+                self._chat_tokenizer = AutoTokenizer.from_pretrained(
+                    self._tokenizer_source()
+                )
+            except Exception as exc:
+                raise SGLangError(
+                    "Could not load the tokenizer chat template. Pass the model's "
+                    "local tokenizer path or Hugging Face ID as tokenizer=..."
+                ) from exc
+        return self._chat_tokenizer
+
+    def render_chat(
+        self,
+        messages: Sequence[Mapping[str, str]],
+        *,
+        add_generation_prompt: bool,
+    ) -> str:
+        """Render messages with the served model's own no-thinking chat template."""
+        tokenizer = self._get_chat_tokenizer()
+        if not getattr(tokenizer, "chat_template", None):
+            raise SGLangError("The served tokenizer does not define a chat template")
+        try:
+            rendered = tokenizer.apply_chat_template(
+                list(messages),
+                tokenize=False,
+                add_generation_prompt=add_generation_prompt,
+                enable_thinking=False,
+            )
+        except Exception as exc:
+            raise SGLangError(
+                "Could not render the tokenizer chat template; ensure "
+                "transformers and jinja2 are installed"
+            ) from exc
+        if not isinstance(rendered, str):
+            raise SGLangError("Tokenizer chat template returned non-text output")
+        return rendered
+
+    def end_of_message_token(self) -> tuple[int, str]:
+        """Return the tokenizer's single native end-of-message token."""
+        tokenizer = self._get_chat_tokenizer()
+        token_id = getattr(tokenizer, "eos_token_id", None)
+        token_text = getattr(tokenizer, "eos_token", None)
+        if not isinstance(token_id, int) or not isinstance(token_text, str):
+            raise SGLangError(
+                "The served tokenizer must define one EOS/end-of-message token"
+            )
+        return token_id, token_text
 
     def single_token(self, label: str) -> tuple[int, str]:
         """Return (token_id, exact decoded text), rejecting multi-token labels."""

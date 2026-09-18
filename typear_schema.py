@@ -1,4 +1,4 @@
-"""Compilation and validation for TypeAR's finite JSON Schema subset."""
+"""Compilation for TypeAR's schema subset and bounded open values."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 
-SCORE_LEVELS = tuple(round(index / 10, 1) for index in range(11))
+MAX_ENUM_CHOICES = 16
 
 
 class SchemaError(ValueError):
@@ -22,6 +22,9 @@ class Decision:
     question: str
     choices: tuple[Any, ...]
     syntax: str = "Choice"
+    numeric_type: str | None = None
+    minimum: int | float | None = None
+    maximum: int | float | None = None
 
 
 def _has_duplicates(values: Sequence[Any]) -> bool:
@@ -40,7 +43,7 @@ def _has_duplicates(values: Sequence[Any]) -> bool:
 
 
 def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
-    """Compile an ordered JSON Schema object into finite TypeAR decisions."""
+    """Compile an ordered JSON Schema object into TypeAR decisions."""
     if not isinstance(schema, Mapping):
         raise SchemaError("schema must be a mapping")
     if schema.get("type") != "object":
@@ -67,39 +70,68 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
         if not isinstance(field, Mapping):
             raise SchemaError(f"property {name!r} must be a schema object")
 
-        explicit_question = field.get("x-question")
-        if "x-question" in field and not isinstance(explicit_question, str):
-            raise SchemaError(f"x-question for {name!r} must be a string")
+        explicit_question = field.get("question")
+        if "question" in field and not isinstance(explicit_question, str):
+            raise SchemaError(f"question for {name!r} must be a string")
         description = field.get("description")
         if "description" in field and not isinstance(description, str):
             raise SchemaError(f"description for {name!r} must be a string")
+        legacy_question = field.get("x-question")
+        if "x-question" in field and not isinstance(legacy_question, str):
+            raise SchemaError(f"x-question for {name!r} must be a string")
         question = (
             explicit_question
             if explicit_question is not None
             else description
             if description is not None
+            else legacy_question
+            if legacy_question is not None
             else f'Choose the value for "{name}".'
         )
 
         field_type = field.get("type")
         enum = field.get("enum")
-        score = field.get("x-score", False)
-        if "x-score" in field and type(score) is not bool:
-            raise SchemaError(f"x-score for {name!r} must be a boolean")
-        if score:
-            if field_type != "number":
-                raise SchemaError(f"x-score for {name!r} requires type 'number'")
-            if enum is not None:
-                raise SchemaError(f"x-score for {name!r} must not also define enum")
-            values = list(SCORE_LEVELS)
-            syntax = "Score"
-        elif field_type == "boolean":
+        if "x-score" in field:
+            raise SchemaError(
+                f"x-score for {name!r} is not supported; use a number enum"
+            )
+        if "x-other" in field:
+            raise SchemaError(
+                f"x-other for {name!r} is not supported; use a closed enum"
+            )
+        if field_type == "boolean":
             values = [True, False] if enum is None else enum
             if not isinstance(values, list) or not values:
                 raise SchemaError(f"enum for {name!r} must be a non-empty list")
             if any(type(value) is not bool for value in values):
                 raise SchemaError(f"boolean enum for {name!r} may contain only booleans")
             syntax = "Bool"
+        elif field_type in {"integer", "number"} and enum is None:
+            minimum = field.get("minimum")
+            maximum = field.get("maximum")
+            for keyword, bound in (("minimum", minimum), ("maximum", maximum)):
+                if bound is not None and not (
+                    type(bound) in {int, float} and math.isfinite(float(bound))
+                ):
+                    raise SchemaError(
+                        f"{keyword} for {name!r} must be a finite number"
+                    )
+            if minimum is not None and maximum is not None and minimum > maximum:
+                raise SchemaError(
+                    f"minimum for {name!r} must not exceed maximum"
+                )
+            decisions.append(
+                Decision(
+                    name=name,
+                    question=question,
+                    choices=(),
+                    syntax="Integer" if field_type == "integer" else "Number",
+                    numeric_type=field_type,
+                    minimum=minimum,
+                    maximum=maximum,
+                )
+            )
+            continue
         elif field_type in {"string", "integer", "number"}:
             if enum is None:
                 raise NotImplementedError(
@@ -107,6 +139,11 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
                 )
             if not isinstance(enum, list) or not enum:
                 raise SchemaError(f"enum for {name!r} must be a non-empty list")
+            if len(enum) > MAX_ENUM_CHOICES:
+                raise SchemaError(
+                    f"enum for {name!r} has {len(enum)} values; "
+                    f"the maximum is {MAX_ENUM_CHOICES}"
+                )
             values = enum
             if field_type == "string":
                 valid = all(isinstance(value, str) for value in values)
@@ -127,8 +164,15 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
                 f"property {name!r} has unsupported JSON Schema type {field_type!r}"
             )
 
+        if len(values) > MAX_ENUM_CHOICES:
+            raise SchemaError(
+                f"enum for {name!r} has {len(values)} values; "
+                f"the maximum is {MAX_ENUM_CHOICES}"
+            )
         if _has_duplicates(values):
             raise SchemaError(f"enum for {name!r} contains duplicate values")
-        decisions.append(Decision(name, question, tuple(values), syntax))
+        decisions.append(
+            Decision(name, question, tuple(values), syntax)
+        )
 
     return decisions
