@@ -2,6 +2,9 @@
 
 ### Updates
 
+- **[2026/09/19]** Added optional [thinking mode](#thinking-mode) with
+  `thinking=True/False` and a configurable per-field thinking budget, followed
+  by type-safe constrained decoding. Thinking is off by default.
 - [2026/09/18] Added integer and float outputs through tokenizer-native
   constrained decoding for JSON Schema `integer` and `number` fields.
 
@@ -13,21 +16,13 @@ TypeAR brings the same typed-decision interface to the open-source
 autoregressive models you already run—without a proprietary model API, model
 retraining, structured-output library, or manual KV-tensor management.
 
-1. **No out-of-schema choices.** Every categorical decision stays inside its
-   declared domain.
-2. **Negligible output-token cost by default.** Categorical decisions generate
-   one token; numbers use bounded, tokenizer-native constrained decoding.
-3. **Linear input cost.** Prefix-cache reuse makes newly processed input grow
-   approximately linearly with the unique context added across the workflow.
-4. **Sequential dependencies when needed.** In sequential mode, each later
-   decision is conditioned on all previous values; batch mode runs independent
-   decisions concurrently.
-5. **Made for open autoregressive LLMs.** TypeAR works with any compatible,
-   pretrained open-source model served by SGLang.
-
-**Open question.** Can a pretrained autoregressive model outperform Jev on
-dependent decision workflows by combining its general-purpose reasoning
-capabilities with explicit conditioning on every decision made so far?
+1. **No out-of-schema hallucinations** — Choices stay within the allowed values.
+2. **Negligible output-token cost** — Single-token categorical selection and bounded numeric decoding; optional thinking adds tokens.
+3. **Linear input computation cost** — Prefix caching avoids reprocessing shared context.
+4. **Supports integer and float types** — Get numeric values directly through constrained decoding.
+5. **Batch or sequential execution** — Run independent decisions together or condition on earlier results.
+6. **Made for open autoregressive LLMs** — Use compatible models you already serve with SGLang.
+7. **Supports thinking mode** — Enable reasoning before the final constrained answer.
 
 ## Quick start
 
@@ -63,25 +58,21 @@ result = client.generate(
     Total: £324
     Employee travelled to London for a client meeting.
     """,
-    schema={
-        "type": "object",
-        "properties": {
-            "expense_type": {
-                "type": "string",
-                "enum": ["meal", "travel", "equipment"],
-                "question": "What type of expense is this?",
-            },
-            "reimbursable": {
-                "type": "boolean",
-                "question": "Should this expense be reimbursed?",
-            },
-            "confidence": {
-                "type": "number",
-                "enum": [0.0, 0.25, 0.5, 0.75, 1.0],
-                "question": "How confident are you?",
-            },
+    questions={
+        "expense_type": {
+            "type": "string",
+            "enum": ["meal", "travel", "equipment"],
+            "instructions": "What type of expense is this?",
         },
-        "required": ["expense_type", "reimbursable", "confidence"],
+        "reimbursable": {
+            "type": "boolean",
+            "instructions": "Should this expense be reimbursed?",
+        },
+        "confidence": {
+            "type": "number",
+            "enum": [0.0, 0.25, 0.5, 0.75, 1.0],
+            "instructions": "How confident are you?",
+        },
     },
 )
 
@@ -93,9 +84,27 @@ print(result)
 # }
 ```
 
+`questions` maps output field names to their definitions. Every field is answered.
+The existing `schema=` JSON Schema interface is also supported; pass only one.
+`state=` is an alias for `context=`; pass only one of them.
+
 Python dictionary insertion order determines the decision order. Each later
 field is conditioned on the original context and the values selected for all
 earlier fields.
+
+## Thinking mode
+
+Thinking is off by default. Enable it when constructing the client:
+
+```python
+client = TypeARClient(
+    "http://127.0.0.1:30000",
+    model="qwen3.8-27b",
+    thinking=True,          # False disables thinking (the default)
+    thinking_budget=1024,   # Maximum thinking tokens per field
+)
+result = client.generate(context=context, questions=questions)
+```
 
 ## Testing
 
@@ -111,7 +120,7 @@ integers, and sequential dependencies. Its deterministic test cases are stored
 in `evals/numeric_eval_cases.jsonl`; the script writes detailed results to
 `evals/numeric_eval_formal_results.jsonl` and prints an aggregate summary.
 
-## Supported schema
+## Question types
 
 TypeAR supports both finite decisions and grammar-constrained numeric fields:
 
@@ -131,15 +140,11 @@ For example, ask for a numeric answer without enumerating every possible value:
 ```python
 result = client.generate(
     context="Calculate the requested value accurately.",
-    schema={
-        "type": "object",
-        "properties": {
-            "answer": {
-                "type": "number",
-                "question": "What is 17.5 multiplied by 4?",
-            },
+    questions={
+        "answer": {
+            "type": "number",
+            "instructions": "What is 17.5 multiplied by 4?",
         },
-        "required": ["answer"],
     },
 )
 
@@ -147,26 +152,26 @@ print(result)
 # {"answer": 70.0}
 ```
 
-Use `question` to tell the model what decision to make:
+Use `instructions` to tell the model what decision to make:
 
 ```python
 {
     "type": "string",
     "enum": ["billing", "technical", "account"],
-    "question": "Which team should handle this ticket?",
+    "instructions": "Which team should handle this ticket?",
 }
 ```
 
-If `question` is absent, TypeAR uses the standard JSON Schema `description`,
-then falls back to an instruction generated from the field name. The older
-`x-question` spelling remains accepted for compatibility.
+If `instructions` is omitted, TypeAR uses `description` or an instruction
+generated from the field name. Rename old `question` / `x-question` fields
+to `instructions`.
 
 ## Sequential and batch execution
 
 Sequential execution is the default:
 
-A schema can express a complete decision workflow. For example, an incident
-triage schema might select, in order:
+Questions can express a complete decision workflow. For example, incident
+triage might select, in order:
 
 1. the affected system;
 2. the severity, conditioned on that system;
@@ -184,7 +189,7 @@ When the fields are independent, run them as one native SGLang batch:
 ```python
 result = client.generate(
     context=context,
-    schema=schema,
+    questions=questions,
     execution="batch",
 )
 ```
@@ -232,7 +237,7 @@ Return probabilities over the allowed semantic values:
 ```python
 result = client.generate(
     context=context,
-    schema=schema,
+    questions=questions,
     return_probabilities=True,
 )
 ```
@@ -271,7 +276,7 @@ from typear import run_schema
 
 result = run_schema(
     context=context,
-    schema=schema,
+    questions=questions,
     base_url="http://127.0.0.1:30000",
     model="qwen3.8-27b",
 )

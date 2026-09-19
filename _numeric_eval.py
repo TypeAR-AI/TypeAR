@@ -129,13 +129,13 @@ def schema_for(case):
     properties = {
         "answer": {
             "type": case["type"],
-            "question": case["question"],
+            "instructions": case["question"],
         }
     }
     if "followup" in case:
         properties["is_positive"] = {
             "type": "boolean",
-            "question": case["followup"]["question"],
+            "instructions": case["followup"]["question"],
         }
     return {
         "type": "object",

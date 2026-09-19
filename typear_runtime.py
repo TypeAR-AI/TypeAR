@@ -61,9 +61,9 @@ class Choice:
                 attributes.append(f"maximum={json.dumps(self.maximum)}")
             metadata = f"{self.syntax}({', '.join(attributes)})"
             instruction = (
-                "Return only the signed integer answer."
+                "Return only a JSON number without a decimal point or exponent notation."
                 if self.numeric_type == "integer"
-                else "Return only the signed number answer."
+                else "Return only a JSON number without exponent notation."
             )
             return "\n".join(
                 [
@@ -109,6 +109,8 @@ class TypeARClient:
         numeric_max_digits: int = 32,
         tokenizer: str | None = None,
         numeric_cache_dir: str | os.PathLike[str] | None = None,
+        thinking: bool = False,
+        thinking_budget: int = 1024,
     ) -> None:
         _validate_decoding(mode, temperature)
         _validate_execution(execution)
@@ -120,6 +122,8 @@ class TypeARClient:
             timeout,
             tokenizer=tokenizer,
             numeric_cache_dir=numeric_cache_dir,
+            thinking=thinking,
+            thinking_budget=thinking_budget,
         )
         self.mode = mode
         self.execution = execution
@@ -190,7 +194,10 @@ class TypeARClient:
             if not isinstance(prop, Mapping):
                 raise SchemaError(f"properties[{index}] must be a mapping")
             name = prop.get("name")
-            question = prop.get("question")
+            for old_key in ("question", "x-question"):
+                if old_key in prop:
+                    raise SchemaError(f"{old_key} is no longer supported; use instructions")
+            question = prop.get("instructions")
             kind = prop.get("type")
             if not isinstance(name, str) or not name:
                 raise SchemaError(f"properties[{index}].name must be a non-empty string")
@@ -199,7 +206,7 @@ class TypeARClient:
             names.add(name)
             if not isinstance(question, str) or not question:
                 raise SchemaError(
-                    f"properties[{index}].question must be a non-empty string"
+                    f"properties[{index}].instructions must be a non-empty string"
                 )
             if kind == "choice":
                 values = prop.get("choices")
@@ -251,14 +258,27 @@ class TypeARClient:
     def generate(
         self,
         *,
-        context: str,
-        schema: Mapping[str, Any],
+        context: str | None = None,
+        state: str | None = None,
+        schema: Mapping[str, Any] | None = None,
+        questions: Mapping[str, Any] | None = None,
         mode: str | None = None,
         execution: str | None = None,
         temperature: float | None = None,
         return_probabilities: bool = False,
         print_final_prompt: bool = False,
     ) -> dict[str, Any]:
+        if (context is None) == (state is None):
+            raise ValueError("provide exactly one of context or state")
+        context = state if state is not None else context
+        if not isinstance(context, str):
+            raise ValueError("context or state must be a string")
+        if (schema is None) == (questions is None):
+            raise SchemaError("provide exactly one of questions or schema")
+        if questions is not None:
+            if not isinstance(questions, Mapping):
+                raise SchemaError("questions must be a mapping of field names to definitions")
+            schema = {"type": "object", "properties": questions}
         active_mode = self.mode if mode is None else mode
         active_execution = self.execution if execution is None else execution
         active_temperature = self.temperature if temperature is None else temperature
@@ -792,6 +812,8 @@ def run_sequential_decisions(
     numeric_max_digits: int = 32,
     tokenizer: str | None = None,
     numeric_cache_dir: str | os.PathLike[str] | None = None,
+    thinking: bool = False,
+    thinking_budget: int = 1024,
     print_final_prompt: bool = True,
 ) -> list[dict]:
     _validate_decoding(mode, temperature)
@@ -802,6 +824,8 @@ def run_sequential_decisions(
         model or os.environ.get("SGLANG_MODEL"),
         tokenizer=tokenizer,
         numeric_cache_dir=numeric_cache_dir,
+        thinking=thinking,
+        thinking_budget=thinking_budget,
     )
     results, prefix = _execute_decisions(
         client,
@@ -818,11 +842,13 @@ def run_sequential_decisions(
 
 
 def run_schema(
-    context: str,
-    schema: Mapping[str, Any],
+    context: str | None = None,
+    schema: Mapping[str, Any] | None = None,
     mode: str = "argmax",
     temperature: float = 1.0,
     *,
+    state: str | None = None,
+    questions: Mapping[str, Any] | None = None,
     execution: str = "sequential",
     base_url: str | None = None,
     model: str | None = None,
@@ -831,6 +857,8 @@ def run_schema(
     numeric_max_digits: int = 32,
     tokenizer: str | None = None,
     numeric_cache_dir: str | os.PathLike[str] | None = None,
+    thinking: bool = False,
+    thinking_budget: int = 1024,
     print_final_prompt: bool = False,
 ) -> dict[str, Any]:
     client = TypeARClient(
@@ -843,10 +871,14 @@ def run_schema(
         numeric_max_digits=numeric_max_digits,
         tokenizer=tokenizer,
         numeric_cache_dir=numeric_cache_dir,
+        thinking=thinking,
+        thinking_budget=thinking_budget,
     )
     return client.generate(
         context=context,
+        state=state,
         schema=schema,
+        questions=questions,
         return_probabilities=return_probabilities,
         print_final_prompt=print_final_prompt,
     )

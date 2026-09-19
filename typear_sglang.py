@@ -24,7 +24,16 @@ class SGLangClient:
         timeout: float = 120.0,
         tokenizer: str | None = None,
         numeric_cache_dir: str | Path | None = None,
+        *,
+        thinking: bool = False,
+        thinking_budget: int = 1024,
     ) -> None:
+        if type(thinking) is not bool:
+            raise ValueError("thinking must be a boolean")
+        if type(thinking_budget) is not int or thinking_budget <= 0:
+            raise ValueError("thinking_budget must be a positive integer")
+        self.thinking = thinking
+        self.thinking_budget = thinking_budget
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
@@ -140,7 +149,7 @@ class SGLangClient:
         *,
         add_generation_prompt: bool,
     ) -> str:
-        """Render messages with the served model's own no-thinking chat template."""
+        """Render history; optionally finish thinking before constrained decoding."""
         tokenizer = self._get_chat_tokenizer()
         if not getattr(tokenizer, "chat_template", None):
             raise SGLangError("The served tokenizer does not define a chat template")
@@ -149,7 +158,7 @@ class SGLangClient:
                 list(messages),
                 tokenize=False,
                 add_generation_prompt=add_generation_prompt,
-                enable_thinking=False,
+                enable_thinking=self.thinking and add_generation_prompt,
             )
         except Exception as exc:
             raise SGLangError(
@@ -158,7 +167,37 @@ class SGLangClient:
             ) from exc
         if not isinstance(rendered, str):
             raise SGLangError("Tokenizer chat template returned non-text output")
+        if self.thinking and add_generation_prompt:
+            return self._finish_thinking(rendered)
         return rendered
+
+    def _finish_thinking(self, prefix: str) -> str:
+        # Support native templates that leave the assistant inside <think>.
+        # Reject incompatible templates rather than silently scoring reasoning.
+        if not prefix.rstrip().endswith("<think>"):
+            raise SGLangError(
+                "thinking=True requires a native chat template ending in an open <think> block"
+            )
+        response = self._request("/generate", {
+            "text": prefix,
+            "sampling_params": {
+                "max_new_tokens": self.thinking_budget,
+                "temperature": 0.6, "top_p": 0.95, "top_k": 20,
+                "stop": ["</think>"], "no_stop_trim": True,
+            },
+        })
+        text = response.get("text") if isinstance(response, Mapping) else None
+        if not isinstance(text, str) or "</think>" not in text:
+            raise SGLangError(
+                "Thinking did not close within budget or ended prematurely; "
+                "no typed result returned"
+            )
+        reasoning = text.split("</think>", 1)[0]
+        if not reasoning.strip():
+            raise SGLangError("Thinking returned an empty block; no typed result returned")
+        # Discard any unconstrained answer after the marker. The existing
+        # runtime records only selected labels/numbers in subsequent history.
+        return prefix + reasoning + "</think>\n\n"
 
     def end_of_message_token(self) -> tuple[int, str]:
         """Return the tokenizer's single native end-of-message token."""
