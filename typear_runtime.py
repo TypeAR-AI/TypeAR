@@ -61,9 +61,9 @@ class Choice:
                 attributes.append(f"maximum={json.dumps(self.maximum)}")
             metadata = f"{self.syntax}({', '.join(attributes)})"
             instruction = (
-                "Return only the signed integer answer."
+                "Return only a JSON number without a decimal point or exponent notation."
                 if self.numeric_type == "integer"
-                else "Return only the signed number answer."
+                else "Return only a JSON number without exponent notation."
             )
             return "\n".join(
                 [
@@ -109,6 +109,8 @@ class TypeARClient:
         numeric_max_digits: int = 32,
         tokenizer: str | None = None,
         numeric_cache_dir: str | os.PathLike[str] | None = None,
+        thinking: bool = False,
+        thinking_budget: int = 1024,
     ) -> None:
         _validate_decoding(mode, temperature)
         _validate_execution(execution)
@@ -120,6 +122,8 @@ class TypeARClient:
             timeout,
             tokenizer=tokenizer,
             numeric_cache_dir=numeric_cache_dir,
+            thinking=thinking,
+            thinking_budget=thinking_budget,
         )
         self.mode = mode
         self.execution = execution
@@ -792,6 +796,8 @@ def run_sequential_decisions(
     numeric_max_digits: int = 32,
     tokenizer: str | None = None,
     numeric_cache_dir: str | os.PathLike[str] | None = None,
+    thinking: bool = False,
+    thinking_budget: int = 1024,
     print_final_prompt: bool = True,
 ) -> list[dict]:
     _validate_decoding(mode, temperature)
@@ -802,6 +808,8 @@ def run_sequential_decisions(
         model or os.environ.get("SGLANG_MODEL"),
         tokenizer=tokenizer,
         numeric_cache_dir=numeric_cache_dir,
+        thinking=thinking,
+        thinking_budget=thinking_budget,
     )
     results, prefix = _execute_decisions(
         client,
@@ -831,6 +839,8 @@ def run_schema(
     numeric_max_digits: int = 32,
     tokenizer: str | None = None,
     numeric_cache_dir: str | os.PathLike[str] | None = None,
+    thinking: bool = False,
+    thinking_budget: int = 1024,
     print_final_prompt: bool = False,
 ) -> dict[str, Any]:
     client = TypeARClient(
@@ -843,6 +853,8 @@ def run_schema(
         numeric_max_digits=numeric_max_digits,
         tokenizer=tokenizer,
         numeric_cache_dir=numeric_cache_dir,
+        thinking=thinking,
+        thinking_budget=thinking_budget,
     )
     return client.generate(
         context=context,

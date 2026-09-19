@@ -331,6 +331,60 @@ class JsonSchemaCompilerTests(unittest.TestCase):
             )
 
 
+class ThinkingTests(unittest.TestCase):
+    def make_client(self, response=None):
+        from unittest.mock import Mock
+        client = SGLangClient(thinking=True, thinking_budget=128)
+        tokenizer = FakeChatTokenizer()
+        tokenizer.apply_chat_template = Mock(return_value="assistant\n<think>\n")
+        client._chat_tokenizer = tokenizer
+        client._request = Mock(return_value=response or {"text": "Work done. </think>illegal answer"})
+        return client
+
+    def test_thinking_stops_before_constrained_answer(self):
+        client = self.make_client()
+        prompt = client.render_chat([], add_generation_prompt=True)
+        self.assertEqual(prompt, "assistant\n<think>\nWork done. </think>\n\n")
+        self.assertNotIn("illegal answer", prompt)
+        params = client._request.call_args.args[1]["sampling_params"]
+        self.assertEqual(params["max_new_tokens"], 128)
+        self.assertEqual(params["stop"], ["</think>"])
+        self.assertTrue(params["no_stop_trim"])
+        self.assertTrue(client._chat_tokenizer.apply_chat_template.call_args.kwargs["enable_thinking"])
+
+    def test_incomplete_or_empty_thinking_returns_no_answer(self):
+        from typear import SGLangError
+        for response in [{"text": "not finished"}, {"text": "</think>"}, {"text": None}, []]:
+            client = self.make_client()
+            client._request.return_value = response
+            with self.subTest(response=response), self.assertRaises(SGLangError):
+                client.render_chat([], add_generation_prompt=True)
+
+    def test_unsupported_template_does_not_generate(self):
+        from typear import SGLangError
+        client = self.make_client()
+        client._chat_tokenizer.apply_chat_template.return_value = "<think></think>"
+        with self.assertRaisesRegex(SGLangError, "native chat template"):
+            client.render_chat([], add_generation_prompt=True)
+        client._request.assert_not_called()
+
+    def test_history_render_never_runs_thinking(self):
+        client = self.make_client()
+        client.render_chat([], add_generation_prompt=False)
+        client._request.assert_not_called()
+        self.assertFalse(client._chat_tokenizer.apply_chat_template.call_args.kwargs["enable_thinking"])
+
+    def test_public_configuration_and_validation(self):
+        self.assertFalse(TypeARClient().sglang.thinking)
+        client = TypeARClient(thinking=True, thinking_budget=256)
+        self.assertTrue(client.sglang.thinking)
+        self.assertEqual(client.sglang.thinking_budget, 256)
+        for kwargs in [{"thinking": "false"}, {"thinking": 1}, {"thinking_budget": 0},
+                       {"thinking_budget": True}, {"thinking_budget": 1.5}]:
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                TypeARClient(**kwargs)
+
+
 class JsonSchemaExecutionTests(unittest.TestCase):
     def test_chat_template_disables_thinking_and_uses_native_eom(self):
         client = SGLangClient()
@@ -444,7 +498,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         self.assertNotIn(3, fake.candidate_sets[0])
         self.assertIn(3, fake.candidate_sets[1])
         self.assertIn(
-            "Return only the signed integer answer.",
+            "Return only a JSON number without a decimal point or exponent notation.",
             fake.prompts[0],
         )
         self.assertIn("<assistant>42</assistant>", fake.prompts[-1])
@@ -491,7 +545,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
 
         self.assertEqual(result, {"temperature": -0.75})
         self.assertIn(
-            "Return only the signed number answer.",
+            "Return only a JSON number without exponent notation.",
             client.last_prompt,
         )
         self.assertIn("<assistant>-0.75<eom>", client.last_prompt)

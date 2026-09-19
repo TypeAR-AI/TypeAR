@@ -2,6 +2,9 @@
 
 ### Updates
 
+- **NEW [2026/09/19]** Added optional [thinking mode](#thinking-mode) with
+  `thinking=True/False` and a configurable per-field thinking budget, followed
+  by type-safe constrained decoding. Thinking is off by default.
 - [2026/09/18] Added integer and float outputs through tokenizer-native
   constrained decoding for JSON Schema `integer` and `number` fields.
 
@@ -96,6 +99,37 @@ print(result)
 Python dictionary insertion order determines the decision order. Each later
 field is conditioned on the original context and the values selected for all
 earlier fields.
+
+## Thinking mode
+
+Thinking is off by default. Enable it when constructing the client:
+
+```python
+client = TypeARClient(
+    "http://127.0.0.1:30000",
+    model="qwen3.8-27b",
+    thinking=True,          # False disables thinking (the default)
+    thinking_budget=1024,   # Maximum thinking tokens per field
+)
+result = client.generate(context=context, schema=schema)
+```
+
+`run_schema(..., thinking=True)` and `run_sequential_decisions(...,
+thinking=True)` accept the same options. This currently requires a model whose
+native thinking template opens a `<think>` block, tested with Qwen3.8-27B.
+TypeAR waits for `</think>` and then applies its normal constrained decision
+or numeric decoding. Only final labels/values are retained for later fields;
+prior reasoning is not carried forward. If thinking does not close within the
+budget, returns an empty block, or uses an unsupported template, TypeAR raises
+`SGLangError` rather than returning an unvalidated answer. There is no automatic
+retry or fallback.
+
+Thinking adds generation cost and latency; the single-token categorical claim
+applies only to the final decision, not its reasoning. Reasoning uses temperature
+0.6, top-p 0.95 and top-k 20; the normal `mode`, `temperature` and `seed` options
+apply to final constrained selection, not reasoning. In batch mode, this initial
+implementation runs field reasoning serially before the existing final-decision
+batch path.
 
 ## Testing
 
