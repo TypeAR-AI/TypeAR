@@ -108,38 +108,40 @@ class FakeChatTokenizer:
 
 
 class JsonSchemaCompilerTests(unittest.TestCase):
-    def test_question_takes_priority(self):
-        [decision] = compile_json_schema(
-            {
-                "type": "object",
-                "properties": {
-                    "expense_type": {
-                        "type": "string",
-                        "enum": ["meal", "travel"],
-                        "question": "Which expense?",
-                        "description": "Description fallback.",
-                        "x-question": "Legacy fallback?",
-                    }
-                },
-            }
-        )
-        self.assertEqual(decision.question, "Which expense?")
-        self.assertEqual(decision.choices, ("meal", "travel"))
+    def test_instructions_take_priority_over_description(self):
+        for spec in [{"type": "boolean"}, {"type": "integer"},
+                     {"type": "number"}, {"type": "string", "enum": ["a", "b"]}]:
+            field = {**spec, "instructions": "Select the value.", "description": "Fallback"}
+            [decision] = compile_json_schema({"type": "object", "properties": {"value": field}})
+            self.assertEqual(decision.question, "Select the value.")
 
-    def test_legacy_x_question_remains_supported(self):
-        [decision] = compile_json_schema(
-            {
-                "type": "object",
-                "properties": {
-                    "expense_type": {
-                        "type": "string",
-                        "enum": ["meal", "travel"],
-                        "x-question": "Which expense?",
-                    }
-                },
-            }
-        )
-        self.assertEqual(decision.question, "Which expense?")
+    def test_question_aliases_are_rejected_even_with_instructions(self):
+        for old_key in ["question", "x-question"]:
+            for extra in [{}, {"instructions": "New wording"}]:
+                field = {"type": "boolean", old_key: "Old wording", **extra}
+                with self.subTest(old_key=old_key, extra=extra):
+                    with self.assertRaisesRegex(SchemaError, "use instructions"):
+                        compile_json_schema({"type": "object", "properties": {"paid": field}})
+                    client = TypeARClient()
+                    for kwargs in [
+                        {"questions": {"paid": field}},
+                        {"schema": {"properties": [{**field, "type": "bool", "name": "paid"}]}},
+                    ]:
+                        with self.assertRaisesRegex(SchemaError, "use instructions"):
+                            client.generate(context="Paid", **kwargs)
+
+    def test_invalid_instructions_are_rejected(self):
+        for value in [None, 1, True, [], {}]:
+            with self.subTest(value=value), self.assertRaisesRegex(SchemaError, "instructions"):
+                compile_json_schema({"type": "object", "properties": {
+                    "x": {"type": "boolean", "instructions": value}
+                }})
+
+    def test_legacy_list_accepts_instructions(self):
+        client = TypeARClient()
+        client.sglang = FakeSGLang()
+        schema = {"properties": [{"name": "paid", "type": "bool", "instructions": "Is it paid?"}]}
+        self.assertEqual(client.compile_schema(schema)[0].question, "Is it paid?")
 
     def test_description_then_generated_question_fallback(self):
         decisions = compile_json_schema(
@@ -194,7 +196,7 @@ class JsonSchemaCompilerTests(unittest.TestCase):
                 "properties": {
                     "reimbursable": {
                         "type": "boolean",
-                        "x-question": "Reimburse it?",
+                        "instructions": "Reimburse it?",
                     }
                 },
             }
@@ -301,7 +303,7 @@ class JsonSchemaCompilerTests(unittest.TestCase):
                 {
                     "type": "object",
                     "properties": {
-                        "x": {"type": "string", "enum": ["a"], "x-question": 3}
+                        "x": {"type": "string", "enum": ["a"], "instructions": 3}
                     },
                 }
             )
@@ -329,6 +331,83 @@ class JsonSchemaCompilerTests(unittest.TestCase):
                     "required": ["missing"],
                 }
             )
+
+
+class QuestionsInterfaceTests(unittest.TestCase):
+    def test_state_and_context_produce_identical_prompts(self):
+        questions = {"paid": {"type": "boolean", "instructions": "Is it paid?"}}
+        for execution in ["sequential", "batch"]:
+            for text in ["Receipt", ""]:
+                clients = [TypeARClient(execution=execution), TypeARClient(execution=execution)]
+                for client in clients:
+                    client.sglang = FakeSGLang([ord("A")])
+                a = clients[0].generate(state=text, questions=questions)
+                b = clients[1].generate(context=text, questions=questions)
+                self.assertEqual(a, b)
+                self.assertEqual(clients[0].last_prompts, clients[1].last_prompts)
+
+    def test_state_rejects_conflicts_missing_and_invalid_types(self):
+        from unittest.mock import Mock
+        for kwargs in [{}, {"state": "x", "context": "x"},
+                       {"state": "", "context": ""}, {"state": 1},
+                       {"state": {}}, {"context": []}]:
+            client = TypeARClient()
+            client.sglang = Mock()
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                client.generate(questions={"paid": {"type": "boolean"}}, **kwargs)
+            self.assertEqual(client.sglang.mock_calls, [])
+
+    def test_run_schema_supports_state_with_both_input_formats(self):
+        from unittest.mock import patch
+        from typear import run_schema
+        questions = {"paid": {"type": "boolean"}}
+        for kwargs in [{"questions": questions}, {"schema": {"type": "object", "properties": questions}}]:
+            with patch("typear_runtime.SGLangClient", return_value=FakeSGLang([ord("A")])):
+                self.assertEqual(run_schema(state="Paid", **kwargs), {"paid": True})
+        with self.assertRaises(ValueError):
+            run_schema("Paid", state="Paid", questions=questions)
+
+    def test_questions_match_schema_in_both_modes(self):
+        questions = {
+            "expense": {"type": "string", "enum": ["meal", "travel"], "instructions": "Classify."},
+            "paid": {"type": "boolean", "instructions": "Is it paid?"},
+        }
+        for execution in ["sequential", "batch"]:
+            clients = [TypeARClient(execution=execution), TypeARClient(execution=execution)]
+            for client in clients:
+                client.sglang = FakeSGLang([ord("B"), ord("A")])
+            new = clients[0].generate(context="Receipt", questions=questions)
+            old = clients[1].generate(context="Receipt", schema={"type": "object", "properties": questions})
+            self.assertEqual(new, {"expense": "travel", "paid": True})
+            self.assertEqual(new, old)
+            self.assertEqual(clients[0].last_prompts, clients[1].last_prompts)
+
+    def test_questions_numeric_and_reserved_field_names(self):
+        client = TypeARClient()
+        client.sglang = FakeSGLang([ord("7"), 3, ord("A")])
+        result = client.generate(context="Seven", questions={
+            "type": {"type": "integer", "instructions": "Extract the number."},
+            "properties": {"type": "boolean", "instructions": "Is it seven?"},
+        })
+        self.assertEqual(result, {"type": 7, "properties": True})
+
+    def test_questions_invalid_inputs_fail_before_network(self):
+        for kwargs in [{}, {"questions": {}, "schema": {}}, {"questions": {}},
+                       {"questions": []}, {"questions": "bad"}, {"questions": {"x": None}}]:
+            client = TypeARClient()
+            with self.subTest(kwargs=kwargs), self.assertRaises(SchemaError):
+                client.generate(context="Context", **kwargs)
+
+    def test_run_schema_keeps_positional_schema_and_accepts_questions(self):
+        from unittest.mock import patch
+        from typear import run_schema
+        questions = {"paid": {"type": "boolean"}}
+        with patch("typear_runtime.SGLangClient", return_value=FakeSGLang([ord("A")])):
+            new = run_schema("Context", questions=questions)
+        with patch("typear_runtime.SGLangClient", return_value=FakeSGLang([ord("A")])):
+            old = run_schema("Context", {"type": "object", "properties": questions})
+        self.assertEqual(new, old)
+        self.assertEqual(new, {"paid": True})
 
 
 class ThinkingTests(unittest.TestCase):
@@ -456,7 +535,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 "scale": {
                     "type": "number",
                     "enum": [0.1, 0.5, 1.0],
-                    "x-question": "Choose a scale.",
+                    "instructions": "Choose a scale.",
                 },
                 "enabled": {"type": "boolean"},
             },
@@ -480,7 +559,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 100,
-                    "x-question": "How many items?",
+                    "instructions": "How many items?",
                 },
                 "enabled": {"type": "boolean"},
             },
@@ -509,7 +588,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
             "properties": {
                 "answer": {
                     "type": "integer",
-                    "question": "What is 127 multiplied by 43?",
+                    "instructions": "What is 127 multiplied by 43?",
                 }
             },
         }
@@ -575,11 +654,11 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 "scale": {
                     "type": "number",
                     "enum": [0.1, 0.5, 1.0],
-                    "x-question": "Choose a scale.",
+                    "instructions": "Choose a scale.",
                 },
                 "enabled": {
                     "type": "boolean",
-                    "x-question": "Enable it?",
+                    "instructions": "Enable it?",
                 },
             },
         }

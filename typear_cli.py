@@ -20,11 +20,11 @@ def example_schema() -> dict[str, Any]:
             "expense_type": {
                 "type": "string",
                 "enum": ["meal", "travel", "equipment"],
-                "question": "What type of expense is this?",
+                "instructions": "What type of expense is this?",
             },
             "reimbursable": {
                 "type": "boolean",
-                "question": "Should this expense be reimbursed?",
+                "instructions": "Should this expense be reimbursed?",
             },
             "confidence": {
                 "type": "number",
@@ -81,7 +81,7 @@ def main() -> None:
     )
     results = client.generate(
         context=receipt,
-        schema=schema,
+        questions=schema["properties"],
         return_probabilities=args.probabilities,
         print_final_prompt=True,
     )

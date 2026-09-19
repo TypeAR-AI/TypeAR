@@ -194,7 +194,10 @@ class TypeARClient:
             if not isinstance(prop, Mapping):
                 raise SchemaError(f"properties[{index}] must be a mapping")
             name = prop.get("name")
-            question = prop.get("question")
+            for old_key in ("question", "x-question"):
+                if old_key in prop:
+                    raise SchemaError(f"{old_key} is no longer supported; use instructions")
+            question = prop.get("instructions")
             kind = prop.get("type")
             if not isinstance(name, str) or not name:
                 raise SchemaError(f"properties[{index}].name must be a non-empty string")
@@ -203,7 +206,7 @@ class TypeARClient:
             names.add(name)
             if not isinstance(question, str) or not question:
                 raise SchemaError(
-                    f"properties[{index}].question must be a non-empty string"
+                    f"properties[{index}].instructions must be a non-empty string"
                 )
             if kind == "choice":
                 values = prop.get("choices")
@@ -255,14 +258,27 @@ class TypeARClient:
     def generate(
         self,
         *,
-        context: str,
-        schema: Mapping[str, Any],
+        context: str | None = None,
+        state: str | None = None,
+        schema: Mapping[str, Any] | None = None,
+        questions: Mapping[str, Any] | None = None,
         mode: str | None = None,
         execution: str | None = None,
         temperature: float | None = None,
         return_probabilities: bool = False,
         print_final_prompt: bool = False,
     ) -> dict[str, Any]:
+        if (context is None) == (state is None):
+            raise ValueError("provide exactly one of context or state")
+        context = state if state is not None else context
+        if not isinstance(context, str):
+            raise ValueError("context or state must be a string")
+        if (schema is None) == (questions is None):
+            raise SchemaError("provide exactly one of questions or schema")
+        if questions is not None:
+            if not isinstance(questions, Mapping):
+                raise SchemaError("questions must be a mapping of field names to definitions")
+            schema = {"type": "object", "properties": questions}
         active_mode = self.mode if mode is None else mode
         active_execution = self.execution if execution is None else execution
         active_temperature = self.temperature if temperature is None else temperature
@@ -826,11 +842,13 @@ def run_sequential_decisions(
 
 
 def run_schema(
-    context: str,
-    schema: Mapping[str, Any],
+    context: str | None = None,
+    schema: Mapping[str, Any] | None = None,
     mode: str = "argmax",
     temperature: float = 1.0,
     *,
+    state: str | None = None,
+    questions: Mapping[str, Any] | None = None,
     execution: str = "sequential",
     base_url: str | None = None,
     model: str | None = None,
@@ -858,7 +876,9 @@ def run_schema(
     )
     return client.generate(
         context=context,
+        state=state,
         schema=schema,
+        questions=questions,
         return_probabilities=return_probabilities,
         print_final_prompt=print_final_prompt,
     )

@@ -70,22 +70,20 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
         if not isinstance(field, Mapping):
             raise SchemaError(f"property {name!r} must be a schema object")
 
-        explicit_question = field.get("question")
-        if "question" in field and not isinstance(explicit_question, str):
-            raise SchemaError(f"question for {name!r} must be a string")
+        instructions = field.get("instructions")
+        if "instructions" in field and not isinstance(instructions, str):
+            raise SchemaError(f"instructions for {name!r} must be a string")
+        for old_key in ("question", "x-question"):
+            if old_key in field:
+                raise SchemaError(f"{old_key} for {name!r} is no longer supported; use instructions")
         description = field.get("description")
         if "description" in field and not isinstance(description, str):
             raise SchemaError(f"description for {name!r} must be a string")
-        legacy_question = field.get("x-question")
-        if "x-question" in field and not isinstance(legacy_question, str):
-            raise SchemaError(f"x-question for {name!r} must be a string")
         question = (
-            explicit_question
-            if explicit_question is not None
+            instructions
+            if instructions is not None
             else description
             if description is not None
-            else legacy_question
-            if legacy_question is not None
             else f'Choose the value for "{name}".'
         )
 
