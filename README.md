@@ -16,21 +16,15 @@ TypeAR brings the same typed-decision interface to the open-source
 autoregressive models you already run—without a proprietary model API, model
 retraining, structured-output library, or manual KV-tensor management.
 
-1. **No out-of-schema choices.** Every categorical decision stays inside its
-   declared domain.
-2. **Negligible output-token cost by default.** Categorical decisions generate
-   one token; numbers use bounded, tokenizer-native constrained decoding.
-3. **Linear input cost.** Prefix-cache reuse makes newly processed input grow
-   approximately linearly with the unique context added across the workflow.
-4. **Sequential dependencies when needed.** In sequential mode, each later
-   decision is conditioned on all previous values; batch mode runs independent
-   decisions concurrently.
-5. **Made for open autoregressive LLMs.** TypeAR works with any compatible,
-   pretrained open-source model served by SGLang.
+1. **No out-of-schema hallucinations**
+2. **Negligible output-token cost**
+3. **Linear input computation cost**
+4. **Supports integer and float types**
+5. **Batch or sequential execution**
+6. **Made for open autoregressive LLMs**
+7. **Supports thinking mode**
 
-**Open question.** Can a pretrained autoregressive model outperform Jev on
-dependent decision workflows by combining its general-purpose reasoning
-capabilities with explicit conditioning on every decision made so far?
+
 
 ## Quick start
 
