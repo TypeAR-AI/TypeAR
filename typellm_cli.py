@@ -69,6 +69,9 @@ def main() -> None:
         "the trip was approved by the employee's manager."
     )
     schema = example_schema()
+    if args.probabilities:
+        for field in schema["properties"].values():
+            field["return_probabilities"] = True
     client = TypeLLMClient(
         args.server_url,
         args.model,
@@ -82,7 +85,6 @@ def main() -> None:
     results = client.generate(
         context=receipt,
         questions=schema["properties"],
-        return_probabilities=args.probabilities,
         print_final_prompt=True,
     )
     print("\n===== DECISIONS =====")
