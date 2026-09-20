@@ -59,6 +59,19 @@ Qwen3.8-27B; follow the
 [Qwen3.8-27B SGLang deployment guide](https://lmsysorg.mintlify.app/cookbook/autoregressive/Qwen/Qwen3.8-27B)
 to start it with prefix caching enabled.
 
+**Qwen3.5-4B and Qwen3.5-9B are also supported and GPU-tested, including thinking mode.**
+
+Serve the chosen checkpoint with SGLang and use the same model ID in the client:
+
+```python
+from typellm import TypeLLMClient
+
+client = TypeLLMClient(
+    "http://127.0.0.1:30000",
+    model="Qwen/Qwen3.8-27B",  # or "Qwen/Qwen3.5-4B", "Qwen/Qwen3.5-9B"
+)
+```
+
 Install the lightweight client-side tokenizer dependencies:
 
 ```bash
@@ -74,7 +87,7 @@ from typellm import TypeLLMClient
 
 client = TypeLLMClient(
     "http://127.0.0.1:30000",
-    model="qwen3.8-27b",
+    model="Qwen/Qwen3.8-27B",
 )
 
 result = client.generate(
@@ -124,16 +137,21 @@ Thinking is off by default. Enable it when constructing the client:
 ```python
 client = TypeLLMClient(
     "http://127.0.0.1:30000",
-    model="qwen3.8-27b",
+    model="Qwen/Qwen3.8-27B",
     thinking=True,          # False disables thinking (the default)
-    thinking_budget=1024,   # Maximum thinking tokens per field
 )
 result = client.generate(context=context, questions=questions)
 ```
 
+No thinking-token budget is set by default. Optionally pass `thinking_budget=2048`
+to cap reasoning per field. TypeLLM reserves context space for the final answer;
+if thinking reaches its length limit, it keeps the partial reasoning, closes the
+thinking block, and proceeds with constrained decoding. Server and network errors
+still propagate.
+
 ## Testing
 
-To run the 128-case numeric regression, first serve `qwen3.8-27b` with SGLang
+To run the 128-case numeric regression, first serve `Qwen/Qwen3.8-27B` with SGLang
 at `http://127.0.0.1:30000`, then run:
 
 ```bash
@@ -337,7 +355,7 @@ result = run_schema(
     context=context,
     questions=questions,
     base_url="http://127.0.0.1:30000",
-    model="qwen3.8-27b",
+    model="Qwen/Qwen3.8-27B",
 )
 ```
 

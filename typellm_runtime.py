@@ -120,7 +120,7 @@ class TypeLLMClient:
         tokenizer: str | None = None,
         numeric_cache_dir: str | os.PathLike[str] | None = None,
         thinking: bool = False,
-        thinking_budget: int = 1024,
+        thinking_budget: int | None = None,
         text_max_tokens: int = 512,
     ) -> None:
         _validate_decoding(mode, temperature)
@@ -136,6 +136,7 @@ class TypeLLMClient:
             thinking=thinking,
             thinking_budget=thinking_budget,
             text_max_tokens=text_max_tokens,
+            answer_reserve_tokens=numeric_max_digits + 3,
         )
         self.mode = mode
         self.execution = execution
@@ -851,7 +852,7 @@ def run_sequential_decisions(
     tokenizer: str | None = None,
     numeric_cache_dir: str | os.PathLike[str] | None = None,
     thinking: bool = False,
-    thinking_budget: int = 1024,
+    thinking_budget: int | None = None,
     print_final_prompt: bool = True,
 ) -> list[dict]:
     _validate_decoding(mode, temperature)
@@ -864,6 +865,7 @@ def run_sequential_decisions(
         numeric_cache_dir=numeric_cache_dir,
         thinking=thinking,
         thinking_budget=thinking_budget,
+        answer_reserve_tokens=numeric_max_digits + 3,
     )
     results, prefix = _execute_decisions(
         client,
@@ -895,7 +897,7 @@ def run_schema(
     tokenizer: str | None = None,
     numeric_cache_dir: str | os.PathLike[str] | None = None,
     thinking: bool = False,
-    thinking_budget: int = 1024,
+    thinking_budget: int | None = None,
     text_max_tokens: int = 512,
     print_final_prompt: bool = False,
 ) -> dict[str, Any]:

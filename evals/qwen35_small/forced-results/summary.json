@@ -1,0 +1,35 @@
+[
+  {
+    "model": "0.8B",
+    "requests": 20,
+    "returned": 20,
+    "type_valid": 20,
+    "correct": 13,
+    "forced_closures": 26,
+    "natural_closures": 0,
+    "reserve_checks_passed": 26,
+    "reserve_checks": 26
+  },
+  {
+    "model": "4B",
+    "requests": 20,
+    "returned": 20,
+    "type_valid": 20,
+    "correct": 20,
+    "forced_closures": 25,
+    "natural_closures": 1,
+    "reserve_checks_passed": 26,
+    "reserve_checks": 26
+  },
+  {
+    "model": "9B",
+    "requests": 20,
+    "returned": 20,
+    "type_valid": 20,
+    "correct": 20,
+    "forced_closures": 26,
+    "natural_closures": 0,
+    "reserve_checks_passed": 26,
+    "reserve_checks": 26
+  }
+]

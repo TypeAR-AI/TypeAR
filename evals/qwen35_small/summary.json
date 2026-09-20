@@ -1,0 +1,62 @@
+[
+  {
+    "model": "0.8B",
+    "thinking": false,
+    "requests": 18,
+    "returned": 18,
+    "type_valid": 18,
+    "exact_matches": 11,
+    "errors": 0,
+    "file": "0.8B-default-serial.jsonl"
+  },
+  {
+    "model": "0.8B",
+    "thinking": true,
+    "requests": 18,
+    "returned": 0,
+    "type_valid": 0,
+    "exact_matches": 0,
+    "errors": 18,
+    "file": "0.8B-default-serial.jsonl"
+  },
+  {
+    "model": "4B",
+    "thinking": false,
+    "requests": 18,
+    "returned": 18,
+    "type_valid": 18,
+    "exact_matches": 18,
+    "errors": 0,
+    "file": "4B.jsonl"
+  },
+  {
+    "model": "4B",
+    "thinking": true,
+    "requests": 18,
+    "returned": 7,
+    "type_valid": 7,
+    "exact_matches": 7,
+    "errors": 11,
+    "file": "4B.jsonl"
+  },
+  {
+    "model": "9B",
+    "thinking": false,
+    "requests": 18,
+    "returned": 18,
+    "type_valid": 18,
+    "exact_matches": 18,
+    "errors": 0,
+    "file": "9B-default-serial.jsonl"
+  },
+  {
+    "model": "9B",
+    "thinking": true,
+    "requests": 18,
+    "returned": 10,
+    "type_valid": 10,
+    "exact_matches": 9,
+    "errors": 8,
+    "file": "9B-default-serial.jsonl"
+  }
+]

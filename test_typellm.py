@@ -2,6 +2,7 @@ import unittest
 
 from typellm import (
     SGLangClient,
+    SGLangError,
     SchemaError,
     TypeLLMClient,
     compile_json_schema,
@@ -101,6 +102,9 @@ class FakeChatTokenizer:
 
     def __init__(self):
         self.calls = []
+
+    def encode(self, text, *, add_special_tokens=False):
+        return list(text.encode("utf-8"))
 
     def apply_chat_template(self, messages, **kwargs):
         self.calls.append((messages, kwargs))
@@ -411,9 +415,29 @@ class QuestionsInterfaceTests(unittest.TestCase):
 
 
 class ThinkingTests(unittest.TestCase):
+    def test_default_thinking_budget_is_unset(self):
+        from unittest.mock import Mock, patch
+        from typellm import run_schema
+        self.assertIsNone(SGLangClient().thinking_budget)
+        self.assertIsNone(TypeLLMClient().sglang.thinking_budget)
+        client = SGLangClient(thinking=True)
+        client._chat_tokenizer = FakeChatTokenizer()
+        client._context_length_cache = 8192
+        client._request = Mock(return_value={"text": "Done.</think>"})
+        client._finish_thinking("<think>")
+        params = client._request.call_args.args[1]["sampling_params"]
+        self.assertIn("max_new_tokens", params)
+        self.assertGreater(params["max_new_tokens"], 2048)
+        self.assertLess(params["max_new_tokens"], 8192)
+        self.assertEqual(params["stop"], ["</think>"])
+        with patch("typellm_runtime.TypeLLMClient") as factory:
+            run_schema(context="x", questions={"flag": {"type": "boolean"}})
+            self.assertIsNone(factory.call_args.kwargs["thinking_budget"])
+
     def make_client(self, response=None):
         from unittest.mock import Mock
         client = SGLangClient(thinking=True, thinking_budget=128)
+        client._context_length_cache = 8192
         tokenizer = FakeChatTokenizer()
         tokenizer.apply_chat_template = Mock(return_value="assistant\n<think>\n")
         client._chat_tokenizer = tokenizer
@@ -430,6 +454,64 @@ class ThinkingTests(unittest.TestCase):
         self.assertEqual(params["stop"], ["</think>"])
         self.assertTrue(params["no_stop_trim"])
         self.assertTrue(client._chat_tokenizer.apply_chat_template.call_args.kwargs["enable_thinking"])
+
+    def test_length_stop_forces_closure_and_retains_reasoning(self):
+        client = self.make_client({"text": "Partial reasoning", "meta_info": {"finish_reason": {"type": "length"}}})
+        prompt = client.render_chat([], add_generation_prompt=True)
+        self.assertIn("Partial reasoning", prompt)
+        self.assertIn("I will now give the final answer.", prompt)
+        self.assertTrue(prompt.endswith("</think>\n\n"))
+
+    def test_context_reserve_limits_thinking_and_rejects_full_input(self):
+        client = self.make_client()
+        client.thinking_budget = None
+        client._context_length_cache = 700
+        prefix = "assistant\n<think>\n"
+        client._finish_thinking(prefix)
+        params = client._request.call_args.args[1]["sampling_params"]
+        self.assertGreater(params["max_new_tokens"], 0)
+        self.assertLess(params["max_new_tokens"] + len(prefix) + client.answer_reserve_tokens, 700)
+        client._request.reset_mock()
+        with self.assertRaisesRegex(SGLangError, "no room"):
+            client._finish_thinking("x" * 700 + "<think>")
+        client._request.assert_not_called()
+
+    def test_context_discovery_and_caching(self):
+        from unittest.mock import Mock
+        for responses, expected, calls in [
+            ([{"context_length": 8192, "server_args": {"context_length": 4096}}], 4096, 1),
+            ([{"server_args": {"context_length": None}}, {"data": [{"id": "model", "max_model_len": 16384}]}], 16384, 2),
+        ]:
+            client = SGLangClient()
+            client._request = Mock(side_effect=responses)
+            self.assertEqual(client._context_length(), expected)
+            self.assertEqual(client._context_length(), expected)
+            self.assertEqual(client._request.call_count, calls)
+
+    def test_abort_is_not_forced_even_with_closing_marker(self):
+        for text in ("Partial", "Partial</think>"):
+            client = self.make_client({"text": text, "meta_info": {"finish_reason": {"type": "abort"}}})
+            with self.assertRaisesRegex(SGLangError, "aborted"):
+                client.render_chat([], add_generation_prompt=True)
+
+    def test_forced_thinking_keeps_all_final_decoders(self):
+        for execution in ("sequential", "batch"):
+            thinking = self.make_client({"text": "Partial", "meta_info": {"finish_reason": {"type": "length"}}})
+            fake = FakeSGLang([ord("7"), 3, ord("A")])
+            render = fake.render_chat
+            def render_with_thinking(messages, *, add_generation_prompt):
+                prompt = render(messages, add_generation_prompt=add_generation_prompt)
+                return thinking._finish_thinking(prompt + "<think>") if add_generation_prompt else prompt
+            fake.render_chat = render_with_thinking
+            def generate_texts(prefixes, limits, **kwargs):
+                self.assertTrue(all(p.endswith("</think>\n\n") for p in prefixes))
+                return ["blue"] * len(prefixes)
+            fake.generate_texts = generate_texts
+            client = TypeLLMClient(execution=execution)
+            client.sglang = fake
+            self.assertEqual(client.generate(context="test", questions={
+                "n": {"type": "integer"}, "b": {"type": "boolean"}, "t": {"type": "string"},
+            }), {"n": 7, "b": True, "t": "blue"})
 
     def test_incomplete_or_empty_thinking_returns_no_answer(self):
         from typellm import SGLangError
