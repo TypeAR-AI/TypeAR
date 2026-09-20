@@ -16,13 +16,25 @@ TypeLLM brings the same typed-decision interface to the open-source
 autoregressive models you already run—without a proprietary model API, model
 retraining, structured-output library, or manual KV-tensor management.
 
+### Supported output types
+
+- **Text** — Free text (`string`).
+- **Integer** — Whole numbers (`integer`).
+- **Number** — Numeric values (`number`).
+- **Boolean** — `true` or `false`.
+- **Enum choice** — One of your allowed string or numeric values.
+
+Enum and boolean fields select from finite candidates; numeric and text fields
+without `enum` generate values token by token. See [schemas and examples](#output-types).
+
+### Features
+
 1. **No out-of-schema hallucinations** — Choices stay within the allowed values.
 2. **Negligible output-token cost** — Single-token categorical selection and bounded numeric decoding; optional thinking adds tokens.
 3. **Linear input computation cost** — Prefix caching avoids reprocessing shared context.
-4. **Supports integer and float types** — Get numeric values directly through constrained decoding.
-5. **Batch or sequential execution** — Run independent decisions together or condition on earlier results.
-6. **Made for open autoregressive LLMs** — Use compatible models you already serve with SGLang.
-7. **Supports thinking mode** — Enable reasoning before the final constrained answer.
+4. **Batch or sequential execution** — Run independent decisions together or condition on earlier results.
+5. **Made for open autoregressive LLMs** — Use compatible models you already serve with SGLang.
+6. **Supports thinking mode** — Enable reasoning before the final constrained answer.
 
 ## Quick start
 
