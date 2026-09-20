@@ -127,14 +127,12 @@ TypeLLM supports finite decisions, numeric fields, and free text:
 | Field | Schema | Returned value |
 |---|---|---|
 | Text | `{"type": "string"}` | `str` |
-| String choice | `{"type": "string", "enum": ["meal", "travel"]}` | `str` |
-| Integer choice | `{"type": "integer", "enum": [1, 2, 3]}` | `int` |
-| Number choice | `{"type": "number", "enum": [0.1, 0.5, 1.0]}` | `int` or `float` |
+| Enum choice | `{"type": "string", "enum": ["meal", "travel"]}` | `str`, `int`, or `float`, depending on the enum |
 | Integer | `{"type": "integer"}` | `int` |
 | Number | `{"type": "number"}` | `float` |
 | Boolean | `{"type": "boolean"}` | `bool` |
 
-Finite enums may contain at most 16 values.
+Enum choices support `string`, `integer`, and `number` types, with at most 16 values. The declared `type` validates the candidate values.
 
 A string without `enum` generates free text:
 
