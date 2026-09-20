@@ -25,6 +25,8 @@ class Decision:
     numeric_type: str | None = None
     minimum: int | float | None = None
     maximum: int | float | None = None
+    text_type: bool = False
+    max_length: int | None = None
 
 
 def _has_duplicates(values: Sequence[Any]) -> bool:
@@ -97,6 +99,15 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
             raise SchemaError(
                 f"x-other for {name!r} is not supported; use a closed enum"
             )
+        max_length = field.get("maxLength")
+        if "maxLength" in field and (type(max_length) is not int or max_length < 0):
+            raise SchemaError(f"maxLength for {name!r} must be a non-negative integer")
+        if field_type == "string" and enum is None:
+            for keyword in ("minLength", "pattern", "format"):
+                if keyword in field:
+                    raise SchemaError(f"{keyword} is not supported for text fields")
+            decisions.append(Decision(name, question, (), "Text", text_type=True, max_length=max_length))
+            continue
         if field_type == "boolean":
             values = [True, False] if enum is None else enum
             if not isinstance(values, list) or not values:
@@ -156,6 +167,8 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
                 raise SchemaError(
                     f"enum values for {name!r} do not match type {field_type!r}"
                 )
+            if field_type == "string" and max_length is not None and any(len(v) > max_length for v in values):
+                raise SchemaError(f"enum values for {name!r} exceed maxLength")
             syntax = "Choice"
         else:
             raise NotImplementedError(

@@ -122,10 +122,11 @@ in `evals/numeric_eval_cases.jsonl`; the script writes detailed results to
 
 ## Question types
 
-TypeAR supports both finite decisions and grammar-constrained numeric fields:
+TypeAR supports finite decisions, numeric fields, and free text:
 
 | Field | Schema | Returned value |
 |---|---|---|
+| Text | `{"type": "string"}` | `str` |
 | String choice | `{"type": "string", "enum": ["meal", "travel"]}` | `str` |
 | Integer choice | `{"type": "integer", "enum": [1, 2, 3]}` | `int` |
 | Number choice | `{"type": "number", "enum": [0.1, 0.5, 1.0]}` | `int` or `float` |
@@ -134,6 +135,27 @@ TypeAR supports both finite decisions and grammar-constrained numeric fields:
 | Boolean | `{"type": "boolean"}` | `bool` |
 
 Finite enums may contain at most 16 values.
+
+A string without `enum` generates free text:
+
+```python
+result = client.generate(
+    state="The train ticket is for a client meeting.",
+    questions={
+        "summary": {"type": "string", "instructions": "Summarize in one sentence."},
+    },
+)
+```
+
+`maxLength` is optional: add `"maxLength": 100` to limit Unicode character count.
+Omitting it adds no character limit. Set `TypeARClient(text_max_tokens=512)` to
+control the separate per-field generation budget (default 512 tokens).
+Incomplete, invalid, or over-length text raises `SGLangError`.
+Sequential fields can use earlier text; batch text fields generate independently.
+Text fields return `probabilities=None` when requested. Text generation uses
+multiple tokens; type safety does not guarantee factual accuracy. Text fields
+currently support `maxLength`, but not `minLength`, `pattern`, or `format`.
+
 
 For example, ask for a numeric answer without enumerating every possible value:
 
