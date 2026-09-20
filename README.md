@@ -1,4 +1,4 @@
-# TypeAR: Type-Safe Decoding for Autoregressive LLMs
+# TypeLLM: Type-Safe Decoding for Autoregressive LLMs
 
 ### Updates
 
@@ -12,7 +12,7 @@
 
 [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev)
 highlights a useful idea: software needs decisions, not more strings to parse.
-TypeAR brings the same typed-decision interface to the open-source
+TypeLLM brings the same typed-decision interface to the open-source
 autoregressive models you already run—without a proprietary model API, model
 retraining, structured-output library, or manual KV-tensor management.
 
@@ -40,14 +40,14 @@ Install the lightweight client-side tokenizer dependencies:
 pip install -r requirements.txt
 ```
 
-### 2. Run TypeAR
+### 2. Run TypeLLM
 
-Point `TypeARClient` at the SGLang server's HTTP endpoint:
+Point `TypeLLMClient` at the SGLang server's HTTP endpoint:
 
 ```python
-from typear import TypeARClient
+from typellm import TypeLLMClient
 
-client = TypeARClient(
+client = TypeLLMClient(
     "http://127.0.0.1:30000",
     model="qwen3.8-27b",
 )
@@ -97,7 +97,7 @@ earlier fields.
 Thinking is off by default. Enable it when constructing the client:
 
 ```python
-client = TypeARClient(
+client = TypeLLMClient(
     "http://127.0.0.1:30000",
     model="qwen3.8-27b",
     thinking=True,          # False disables thinking (the default)
@@ -122,7 +122,7 @@ in `evals/numeric_eval_cases.jsonl`; the script writes detailed results to
 
 ## Question types
 
-TypeAR supports finite decisions, numeric fields, and free text:
+TypeLLM supports finite decisions, numeric fields, and free text:
 
 | Field | Schema | Returned value |
 |---|---|---|
@@ -146,7 +146,7 @@ result = client.generate(
 ```
 
 `maxLength` is optional: add `"maxLength": 100` to limit Unicode character count.
-Omitting it adds no character limit. Set `TypeARClient(text_max_tokens=512)` to
+Omitting it adds no character limit. Set `TypeLLMClient(text_max_tokens=512)` to
 control the separate per-field generation budget (default 512 tokens).
 Incomplete, invalid, or over-length text raises `SGLangError`.
 Sequential fields can use earlier text; batch text fields generate independently.
@@ -182,7 +182,7 @@ Use `instructions` to tell the model what decision to make:
 }
 ```
 
-If `instructions` is omitted, TypeAR uses `description` or an instruction
+If `instructions` is omitted, TypeLLM uses `description` or an instruction
 generated from the field name. Rename old `question` / `x-question` fields
 to `instructions`.
 
@@ -278,7 +278,7 @@ result = client.generate(
 Argmax is the default. To sample only among the allowed values:
 
 ```python
-client = TypeARClient(
+client = TypeLLMClient(
     "http://127.0.0.1:30000",
     mode="sample",
     temperature=0.8,
@@ -292,7 +292,7 @@ numeric decoding.
 For a one-off request, use the convenience function:
 
 ```python
-from typear import run_schema
+from typellm import run_schema
 
 result = run_schema(
     context=context,

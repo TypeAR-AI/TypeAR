@@ -9,7 +9,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from typear_numeric import load_numeric_token_table
+from typellm_numeric import load_numeric_token_table
 
 
 class SGLangError(RuntimeError):

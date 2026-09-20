@@ -1,12 +1,12 @@
 import unittest
 
-from typear import (
+from typellm import (
     SGLangClient,
     SchemaError,
-    TypeARClient,
+    TypeLLMClient,
     compile_json_schema,
 )
-from typear_numeric import build_numeric_token_table
+from typellm_numeric import build_numeric_token_table
 
 
 class FakeSGLang:
@@ -122,7 +122,7 @@ class JsonSchemaCompilerTests(unittest.TestCase):
                 with self.subTest(old_key=old_key, extra=extra):
                     with self.assertRaisesRegex(SchemaError, "use instructions"):
                         compile_json_schema({"type": "object", "properties": {"paid": field}})
-                    client = TypeARClient()
+                    client = TypeLLMClient()
                     for kwargs in [
                         {"questions": {"paid": field}},
                         {"schema": {"properties": [{**field, "type": "bool", "name": "paid"}]}},
@@ -138,7 +138,7 @@ class JsonSchemaCompilerTests(unittest.TestCase):
                 }})
 
     def test_legacy_list_accepts_instructions(self):
-        client = TypeARClient()
+        client = TypeLLMClient()
         client.sglang = FakeSGLang()
         schema = {"properties": [{"name": "paid", "type": "bool", "instructions": "Is it paid?"}]}
         self.assertEqual(client.compile_schema(schema)[0].question, "Is it paid?")
@@ -338,7 +338,7 @@ class QuestionsInterfaceTests(unittest.TestCase):
         questions = {"paid": {"type": "boolean", "instructions": "Is it paid?"}}
         for execution in ["sequential", "batch"]:
             for text in ["Receipt", ""]:
-                clients = [TypeARClient(execution=execution), TypeARClient(execution=execution)]
+                clients = [TypeLLMClient(execution=execution), TypeLLMClient(execution=execution)]
                 for client in clients:
                     client.sglang = FakeSGLang([ord("A")])
                 a = clients[0].generate(state=text, questions=questions)
@@ -351,7 +351,7 @@ class QuestionsInterfaceTests(unittest.TestCase):
         for kwargs in [{}, {"state": "x", "context": "x"},
                        {"state": "", "context": ""}, {"state": 1},
                        {"state": {}}, {"context": []}]:
-            client = TypeARClient()
+            client = TypeLLMClient()
             client.sglang = Mock()
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 client.generate(questions={"paid": {"type": "boolean"}}, **kwargs)
@@ -359,10 +359,10 @@ class QuestionsInterfaceTests(unittest.TestCase):
 
     def test_run_schema_supports_state_with_both_input_formats(self):
         from unittest.mock import patch
-        from typear import run_schema
+        from typellm import run_schema
         questions = {"paid": {"type": "boolean"}}
         for kwargs in [{"questions": questions}, {"schema": {"type": "object", "properties": questions}}]:
-            with patch("typear_runtime.SGLangClient", return_value=FakeSGLang([ord("A")])):
+            with patch("typellm_runtime.SGLangClient", return_value=FakeSGLang([ord("A")])):
                 self.assertEqual(run_schema(state="Paid", **kwargs), {"paid": True})
         with self.assertRaises(ValueError):
             run_schema("Paid", state="Paid", questions=questions)
@@ -373,7 +373,7 @@ class QuestionsInterfaceTests(unittest.TestCase):
             "paid": {"type": "boolean", "instructions": "Is it paid?"},
         }
         for execution in ["sequential", "batch"]:
-            clients = [TypeARClient(execution=execution), TypeARClient(execution=execution)]
+            clients = [TypeLLMClient(execution=execution), TypeLLMClient(execution=execution)]
             for client in clients:
                 client.sglang = FakeSGLang([ord("B"), ord("A")])
             new = clients[0].generate(context="Receipt", questions=questions)
@@ -383,7 +383,7 @@ class QuestionsInterfaceTests(unittest.TestCase):
             self.assertEqual(clients[0].last_prompts, clients[1].last_prompts)
 
     def test_questions_numeric_and_reserved_field_names(self):
-        client = TypeARClient()
+        client = TypeLLMClient()
         client.sglang = FakeSGLang([ord("7"), 3, ord("A")])
         result = client.generate(context="Seven", questions={
             "type": {"type": "integer", "instructions": "Extract the number."},
@@ -394,17 +394,17 @@ class QuestionsInterfaceTests(unittest.TestCase):
     def test_questions_invalid_inputs_fail_before_network(self):
         for kwargs in [{}, {"questions": {}, "schema": {}}, {"questions": {}},
                        {"questions": []}, {"questions": "bad"}, {"questions": {"x": None}}]:
-            client = TypeARClient()
+            client = TypeLLMClient()
             with self.subTest(kwargs=kwargs), self.assertRaises(SchemaError):
                 client.generate(context="Context", **kwargs)
 
     def test_run_schema_keeps_positional_schema_and_accepts_questions(self):
         from unittest.mock import patch
-        from typear import run_schema
+        from typellm import run_schema
         questions = {"paid": {"type": "boolean"}}
-        with patch("typear_runtime.SGLangClient", return_value=FakeSGLang([ord("A")])):
+        with patch("typellm_runtime.SGLangClient", return_value=FakeSGLang([ord("A")])):
             new = run_schema("Context", questions=questions)
-        with patch("typear_runtime.SGLangClient", return_value=FakeSGLang([ord("A")])):
+        with patch("typellm_runtime.SGLangClient", return_value=FakeSGLang([ord("A")])):
             old = run_schema("Context", {"type": "object", "properties": questions})
         self.assertEqual(new, old)
         self.assertEqual(new, {"paid": True})
@@ -432,7 +432,7 @@ class ThinkingTests(unittest.TestCase):
         self.assertTrue(client._chat_tokenizer.apply_chat_template.call_args.kwargs["enable_thinking"])
 
     def test_incomplete_or_empty_thinking_returns_no_answer(self):
-        from typear import SGLangError
+        from typellm import SGLangError
         for response in [{"text": "not finished"}, {"text": "</think>"}, {"text": None}, []]:
             client = self.make_client()
             client._request.return_value = response
@@ -440,7 +440,7 @@ class ThinkingTests(unittest.TestCase):
                 client.render_chat([], add_generation_prompt=True)
 
     def test_unsupported_template_does_not_generate(self):
-        from typear import SGLangError
+        from typellm import SGLangError
         client = self.make_client()
         client._chat_tokenizer.apply_chat_template.return_value = "<think></think>"
         with self.assertRaisesRegex(SGLangError, "native chat template"):
@@ -454,14 +454,14 @@ class ThinkingTests(unittest.TestCase):
         self.assertFalse(client._chat_tokenizer.apply_chat_template.call_args.kwargs["enable_thinking"])
 
     def test_public_configuration_and_validation(self):
-        self.assertFalse(TypeARClient().sglang.thinking)
-        client = TypeARClient(thinking=True, thinking_budget=256)
+        self.assertFalse(TypeLLMClient().sglang.thinking)
+        client = TypeLLMClient(thinking=True, thinking_budget=256)
         self.assertTrue(client.sglang.thinking)
         self.assertEqual(client.sglang.thinking_budget, 256)
         for kwargs in [{"thinking": "false"}, {"thinking": 1}, {"thinking_budget": 0},
                        {"thinking_budget": True}, {"thinking_budget": 1.5}]:
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
-                TypeARClient(**kwargs)
+                TypeLLMClient(**kwargs)
 
 
 class JsonSchemaExecutionTests(unittest.TestCase):
@@ -483,7 +483,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         )
 
     def test_manual_choice_is_limited_to_sixteen_values(self):
-        from typear import Choice
+        from typellm import Choice
 
         with self.assertRaisesRegex(ValueError, "maximum is 16"):
             Choice(
@@ -513,7 +513,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 },
             },
         }
-        client = TypeARClient()
+        client = TypeLLMClient()
         fake = FakeSGLang([ord("K")])
         client.sglang = fake
 
@@ -541,7 +541,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
             },
             "required": ["scale", "enabled"],
         }
-        client = TypeARClient()
+        client = TypeLLMClient()
         fake = FakeSGLang([ord("B"), ord("A")])
         client.sglang = fake
 
@@ -564,7 +564,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 "enabled": {"type": "boolean"},
             },
         }
-        client = TypeARClient()
+        client = TypeLLMClient()
         fake = FakeSGLang([ord("4"), ord("2"), 3, ord("A")])
         client.sglang = fake
 
@@ -592,7 +592,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 }
             },
         }
-        client = TypeARClient()
+        client = TypeLLMClient()
         fake = FakeSGLang(
             [9001, 3],
             numeric_pieces=[
@@ -614,7 +614,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
             "type": "object",
             "properties": {"temperature": {"type": "number"}},
         }
-        client = TypeARClient()
+        client = TypeLLMClient()
         fake = FakeSGLang(
             [ord("-"), ord("0"), ord("."), ord("7"), ord("5"), 3]
         )
@@ -637,7 +637,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 "enabled": {"type": "boolean"},
             },
         }
-        client = TypeARClient(execution="batch")
+        client = TypeLLMClient(execution="batch")
         fake = FakeSGLang([ord("7"), 3, ord("A")])
         client.sglang = fake
 
@@ -662,7 +662,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 },
             },
         }
-        client = TypeARClient(execution="batch")
+        client = TypeLLMClient(execution="batch")
         fake = FakeSGLang([ord("B"), ord("A")])
         client.sglang = fake
 

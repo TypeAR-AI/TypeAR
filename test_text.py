@@ -1,8 +1,8 @@
 import json
 import unittest
 from unittest.mock import patch
-from typear import TypeARClient, SGLangClient, SGLangError, SchemaError, compile_json_schema, run_schema
-from test_typear import FakeSGLang, FakeChatTokenizer
+from typellm import TypeLLMClient, SGLangClient, SGLangError, SchemaError, compile_json_schema, run_schema
+from test_typellm import FakeSGLang, FakeChatTokenizer
 
 
 class TextTests(unittest.TestCase):
@@ -33,7 +33,7 @@ class TextTests(unittest.TestCase):
 
     def test_mixed_execution_and_history(self):
         for execution in ('sequential','batch'):
-            client=TypeARClient(execution=execution)
+            client=TypeLLMClient(execution=execution)
             fake=FakeSGLang([ord('7'),3,ord('A')])
             calls=[]
             def generate(prefixes, limits, **kwargs):
@@ -60,15 +60,15 @@ class TextTests(unittest.TestCase):
         for execution in ('batch','sequential'):
             fake=FakeSGLang()
             fake.generate_texts=lambda prefixes,limits,**kwargs:['hello']*len(prefixes)
-            with patch('typear_runtime.SGLangClient',return_value=fake) as constructor:
+            with patch('typellm_runtime.SGLangClient',return_value=fake) as constructor:
                 self.assertEqual(run_schema(state='x',questions={'t':{'type':'string'}},execution=execution,text_max_tokens=24),{'t':'hello'})
                 self.assertEqual(constructor.call_args.kwargs['text_max_tokens'],24)
         for budget in (0,-1,True):
             with self.assertRaises(ValueError):
-                TypeARClient(text_max_tokens=budget)
+                TypeLLMClient(text_max_tokens=budget)
 
     def test_thinking_then_constrained_text(self):
-        client=TypeARClient(thinking=True)
+        client=TypeLLMClient(thinking=True)
         client.sglang._chat_tokenizer=FakeChatTokenizer()
         client.sglang._chat_tokenizer.apply_chat_template=lambda *args,**kw: "assistant\n<think>\n" if kw["enable_thinking"] else "completed"
         responses=[{'text':'brief</think>'},[{'text':'"done"','meta_info':{'finish_reason':{'type':'stop'}}}]]

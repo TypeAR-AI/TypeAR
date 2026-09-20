@@ -5,7 +5,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-from typear import TypeARClient
+from typellm import TypeLLMClient
 
 
 SEED = 20260918
@@ -157,7 +157,7 @@ def main():
         "".join(json.dumps(case, ensure_ascii=False) + "\n" for case in cases),
         encoding="utf-8",
     )
-    client = TypeARClient(
+    client = TypeLLMClient(
         "http://127.0.0.1:30000",
         model="qwen3.8-27b",
         mode="argmax",

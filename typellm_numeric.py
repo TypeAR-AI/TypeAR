@@ -45,7 +45,7 @@ def _default_cache_dir() -> Path:
     configured = os.environ.get("TYPEAR_CACHE_DIR")
     if configured:
         return Path(configured).expanduser()
-    return Path.home() / ".cache" / "typear" / "numeric_tokens"
+    return Path.home() / ".cache" / "typellm" / "numeric_tokens"
 
 
 def _load_tokenizer(source: str) -> Any:
@@ -74,7 +74,7 @@ def _load_tokenizer(source: str) -> Any:
     except Exception as exc:
         raise NumericTokenizerError(
             f"Could not load tokenizer {source!r}. If SGLang uses a server-local "
-            "path, pass its Hugging Face tokenizer ID to TypeARClient(tokenizer=...)."
+            "path, pass its Hugging Face tokenizer ID to TypeLLMClient(tokenizer=...)."
         ) from exc
 
 
