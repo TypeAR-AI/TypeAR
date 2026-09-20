@@ -120,19 +120,25 @@ integers, and sequential dependencies. Its deterministic test cases are stored
 in `evals/numeric_eval_cases.jsonl`; the script writes detailed results to
 `evals/numeric_eval_formal_results.jsonl` and prints an aggregate summary.
 
-## Question types
+## Output types
 
 TypeLLM supports finite decisions, numeric fields, and free text:
 
 | Field | Schema | Returned value |
 |---|---|---|
 | Text | `{"type": "string"}` | `str` |
-| Enum choice | `{"type": "string", "enum": ["meal", "travel"]}` | `str`, `int`, or `float`, depending on the enum |
 | Integer | `{"type": "integer"}` | `int` |
 | Number | `{"type": "number"}` | `float` |
 | Boolean | `{"type": "boolean"}` | `bool` |
+| Enum choice | `{"type": "string", "enum": ["meal", "travel"]}` | Candidate type: `str`, `int`, or `float` |
 
 Enum choices support `string`, `integer`, and `number` types, with at most 16 values. The declared `type` validates the candidate values.
+
+Generation works in three ways:
+
+- **Choice** — Selects from finite candidates for enum and boolean fields.
+- **Numeric** — Generates integers or numbers without `enum` token by token under numeric constraints.
+- **Text** — Generates a JSON string for strings without `enum`, then decodes it to `str`.
 
 A string without `enum` generates free text:
 
