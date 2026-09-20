@@ -12,11 +12,7 @@
 
 ## Introduction
 
-[TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev)
-highlights a useful idea: software needs decisions, not more strings to parse.
-TypeLLM brings the same typed-decision interface to the open-source
-autoregressive models you already run—without a proprietary model API, model
-retraining, structured-output library, or manual KV-tensor management.
+TypeLLM extends autoregressive LLMs with type-safe generation. Models can still think and generate freely when needed, while producing guaranteed typed outputs when structure matters. Define the output with a JSON Schema, and TypeLLM returns values your software can use directly.
 
 ### Supported output types
 
