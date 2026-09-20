@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import urllib.error
 import urllib.request
@@ -26,15 +27,20 @@ class SGLangClient:
         numeric_cache_dir: str | Path | None = None,
         *,
         thinking: bool = False,
-        thinking_budget: int = 1024,
+        thinking_budget: int | None = None,
         text_max_tokens: int = 512,
+        answer_reserve_tokens: int = 64,
     ) -> None:
         if type(thinking) is not bool:
             raise ValueError("thinking must be a boolean")
-        if type(thinking_budget) is not int or thinking_budget <= 0:
-            raise ValueError("thinking_budget must be a positive integer")
+        if thinking_budget is not None and (type(thinking_budget) is not int or thinking_budget <= 0):
+            raise ValueError("thinking_budget must be a positive integer or None")
         if type(text_max_tokens) is not int or text_max_tokens <= 0:
             raise ValueError("text_max_tokens must be a positive integer")
+        if type(answer_reserve_tokens) is not int or answer_reserve_tokens <= 0:
+            raise ValueError("answer_reserve_tokens must be a positive integer")
+        self.answer_reserve_tokens = max(answer_reserve_tokens, text_max_tokens)
+        self._context_length_cache: int | None = None
         self.text_max_tokens = text_max_tokens
         self.thinking = thinking
         self.thinking_budget = thinking_budget
@@ -175,6 +181,30 @@ class SGLangClient:
             return self._finish_thinking(rendered)
         return rendered
 
+    def _context_length(self) -> int:
+        """Read the served context window, including any server override."""
+        if self._context_length_cache is None:
+            info = self._request("/get_server_info")
+            candidates = []
+            if isinstance(info, Mapping):
+                candidates.append(info.get("context_length"))
+                args = info.get("server_args", {})
+                if isinstance(args, Mapping):
+                    candidates.append(args.get("context_length"))
+            limits = [n for n in candidates if type(n) is int and n > 0]
+            if not limits:
+                models = self._request("/v1/models")
+                data = models.get("data", []) if isinstance(models, Mapping) else []
+                for item in data:
+                    if isinstance(item, Mapping) and (len(data) == 1 or item.get("id") == self.model):
+                        limit = item.get("max_model_len")
+                        if type(limit) is int and limit > 0:
+                            limits.append(limit)
+            if not limits:
+                raise SGLangError("Could not discover the served context length to reserve final-answer space")
+            self._context_length_cache = min(limits)
+        return self._context_length_cache
+
     def _finish_thinking(self, prefix: str) -> str:
         # Support native templates that leave the assistant inside <think>.
         # Reject incompatible templates rather than silently scoring reasoning.
@@ -182,20 +212,39 @@ class SGLangClient:
             raise SGLangError(
                 "thinking=True requires a native chat template ending in an open <think> block"
             )
+        tokenizer = self._get_chat_tokenizer()
+        forced_end = "\n\nI will now give the final answer.\n</think>\n\n"
+        prefix_tokens = len(tokenizer.encode(prefix, add_special_tokens=False))
+        closing_tokens = len(tokenizer.encode(forced_end, add_special_tokens=False))
+        # This is available context, not an independent default thinking budget.
+        available = self._context_length() - prefix_tokens - self.answer_reserve_tokens - closing_tokens - 16
+        if available <= 0:
+            raise SGLangError("Input leaves no room for thinking and the final constrained answer")
+        limit = available if self.thinking_budget is None else min(available, self.thinking_budget)
         response = self._request("/generate", {
             "text": prefix,
             "sampling_params": {
-                "max_new_tokens": self.thinking_budget,
+                "max_new_tokens": limit,
                 "temperature": 0.6, "top_p": 0.95, "top_k": 20,
                 "stop": ["</think>"], "no_stop_trim": True,
             },
         })
         text = response.get("text") if isinstance(response, Mapping) else None
-        if not isinstance(text, str) or "</think>" not in text:
-            raise SGLangError(
-                "Thinking did not close within budget or ended prematurely; "
-                "no typed result returned"
-            )
+        if not isinstance(text, str):
+            raise SGLangError("Thinking returned non-text output; no typed result returned")
+        meta = response.get("meta_info", {})
+        finish = meta.get("finish_reason", {}) if isinstance(meta, Mapping) else {}
+        if isinstance(finish, Mapping) and finish.get("type") in {"abort", "error"}:
+            raise SGLangError("Thinking was aborted; no typed result returned")
+        if "</think>" not in text:
+            if not isinstance(finish, Mapping) or finish.get("type") != "length" or not text.strip():
+                raise SGLangError("Thinking ended without a closing </think> marker; no typed result returned")
+            completed = prefix + text + forced_end
+            # Guard tokenizer/count mismatches before issuing a final request.
+            if len(tokenizer.encode(completed, add_special_tokens=False)) + self.answer_reserve_tokens > self._context_length():
+                raise SGLangError("Thinking response exceeded the reserved context space")
+            logging.getLogger("typellm").info("Thinking length limit reached; closing reasoning before constrained decoding")
+            return completed
         reasoning = text.split("</think>", 1)[0]
         if not reasoning.strip():
             raise SGLangError("Thinking returned an empty block; no typed result returned")

@@ -69,6 +69,7 @@ class TextTests(unittest.TestCase):
 
     def test_thinking_then_constrained_text(self):
         client=TypeLLMClient(thinking=True)
+        client.sglang._context_length_cache=8192
         client.sglang._chat_tokenizer=FakeChatTokenizer()
         client.sglang._chat_tokenizer.apply_chat_template=lambda *args,**kw: "assistant\n<think>\n" if kw["enable_thinking"] else "completed"
         responses=[{'text':'brief</think>'},[{'text':'"done"','meta_info':{'finish_reason':{'type':'stop'}}}]]
