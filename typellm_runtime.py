@@ -35,6 +35,7 @@ class Choice:
     maximum: int | float | None = None
     text_type: bool = False
     max_length: int | None = None
+    return_probabilities: bool = False
 
     def __post_init__(self) -> None:
         if not self.choices and self.numeric_type is None and not self.text_type:
@@ -189,6 +190,7 @@ class TypeLLMClient:
                     maximum=item.maximum,
                     text_type=item.text_type,
                     max_length=item.max_length,
+                    return_probabilities=item.return_probabilities,
                 )
                 for item in decisions
             ]
@@ -278,7 +280,6 @@ class TypeLLMClient:
         mode: str | None = None,
         execution: str | None = None,
         temperature: float | None = None,
-        return_probabilities: bool = False,
         print_final_prompt: bool = False,
     ) -> dict[str, Any]:
         if (context is None) == (state is None):
@@ -325,15 +326,11 @@ class TypeLLMClient:
         for decision, row in zip(decisions, rows):
             assert decision.name is not None
             value = row["value"]
-            if return_probabilities:
-                probabilities = (
-                    None
-                    if decision.numeric_type is not None or decision.text_type
-                    else {
-                        decision.choices[label]: probability
-                        for label, probability in row["probabilities"].items()
-                    }
-                )
+            if decision.return_probabilities:
+                probabilities = {
+                    decision.choices[label]: probability
+                    for label, probability in row["probabilities"].items()
+                }
                 output[decision.name] = {
                     "value": value,
                     "probabilities": probabilities,
@@ -894,7 +891,6 @@ def run_schema(
     base_url: str | None = None,
     model: str | None = None,
     seed: int | None = None,
-    return_probabilities: bool = False,
     numeric_max_digits: int = 32,
     tokenizer: str | None = None,
     numeric_cache_dir: str | os.PathLike[str] | None = None,
@@ -922,6 +918,5 @@ def run_schema(
         state=state,
         schema=schema,
         questions=questions,
-        return_probabilities=return_probabilities,
         print_final_prompt=print_final_prompt,
     )

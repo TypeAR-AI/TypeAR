@@ -144,7 +144,7 @@ A string without `enum` generates free text:
 
 ```python
 result = client.generate(
-    state="The train ticket is for a client meeting.",
+    context="The train ticket is for a client meeting.",
     questions={
         "summary": {"type": "string", "instructions": "Summarize in one sentence."},
     },
@@ -156,7 +156,7 @@ Omitting it adds no character limit. Set `TypeLLMClient(text_max_tokens=512)` to
 control the separate per-field generation budget (default 512 tokens).
 Incomplete, invalid, or over-length text raises `SGLangError`.
 Sequential fields can use earlier text; batch text fields generate independently.
-Text fields return `probabilities=None` when requested. Text generation uses
+Text generation uses
 multiple tokens; type safety does not guarantee factual accuracy. Text fields
 currently support `maxLength`, but not `minLength`, `pattern`, or `format`.
 
@@ -258,13 +258,18 @@ parallelism but removes cross-decision dependencies.
 
 ## Probabilities and sampling
 
-Return probabilities over the allowed semantic values:
+Set `return_probabilities` on individual enum or boolean fields:
 
 ```python
 result = client.generate(
     context=context,
-    questions=questions,
-    return_probabilities=True,
+    questions={
+        "expense_type": {
+            "type": "string",
+            "enum": ["meal", "travel", "equipment"],
+            "return_probabilities": True,
+        },
+    },
 )
 ```
 
@@ -281,7 +286,10 @@ result = client.generate(
 }
 ```
 
-Argmax is the default. To sample only among the allowed values:
+Only opted-in fields return `value` and `probabilities`; other fields return plain values.
+The option is not supported on open Numeric or Text fields.
+
+Argmax is the default. To enable sampling:
 
 ```python
 client = TypeLLMClient(
@@ -292,8 +300,8 @@ client = TypeLLMClient(
 )
 ```
 
-Temperature is applied to constrained candidate scores, including each step of
-numeric decoding.
+Sampling applies to finite candidates for Choice fields and to token generation
+for Numeric and Text fields. `temperature` controls sampling in each case.
 
 For a one-off request, use the convenience function:
 

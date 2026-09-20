@@ -27,6 +27,7 @@ class Decision:
     maximum: int | float | None = None
     text_type: bool = False
     max_length: int | None = None
+    return_probabilities: bool = False
 
 
 def _has_duplicates(values: Sequence[Any]) -> bool:
@@ -91,6 +92,11 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
 
         field_type = field.get("type")
         enum = field.get("enum")
+        return_probabilities = field.get("return_probabilities", False)
+        if type(return_probabilities) is not bool:
+            raise SchemaError(f"return_probabilities for {name!r} must be a boolean")
+        if "return_probabilities" in field and field_type != "boolean" and enum is None:
+            raise SchemaError(f"return_probabilities for {name!r} is only supported for enum or boolean fields")
         if "x-score" in field:
             raise SchemaError(
                 f"x-score for {name!r} is not supported; use a number enum"
@@ -183,7 +189,7 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
         if _has_duplicates(values):
             raise SchemaError(f"enum for {name!r} contains duplicate values")
         decisions.append(
-            Decision(name, question, tuple(values), syntax)
+            Decision(name, question, tuple(values), syntax, return_probabilities=return_probabilities)
         )
 
     return decisions

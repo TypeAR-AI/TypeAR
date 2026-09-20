@@ -43,10 +43,10 @@ class TextTests(unittest.TestCase):
             client.sglang=fake
             result=client.generate(state='context',questions={
                 'a':{'type':'string'},'n':{'type':'integer'},
-                'b':{'type':'string','maxLength':10},'ok':{'type':'boolean'}},return_probabilities=True)
+                'b':{'type':'string','maxLength':10},'ok':{'type':'boolean','return_probabilities':True}})
             self.assertEqual(list(result),['a','n','b','ok'])
-            self.assertEqual([r['value'] for r in result.values()],['alpha',7,'beta',True])
-            self.assertIsNone(result['a']['probabilities'])
+            self.assertEqual([result['a'],result['n'],result['b'],result['ok']['value']],['alpha',7,'beta',True])
+            self.assertIn(True,result['ok']['probabilities'])
             if execution=='batch':
                 self.assertEqual(len(calls),1)
                 self.assertEqual(len(calls[0]),2)

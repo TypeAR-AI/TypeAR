@@ -569,11 +569,11 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         client.sglang = fake
 
         result = client.generate(
-            context="context", schema=schema, return_probabilities=True
+            context="context", schema=schema
         )
 
-        self.assertEqual(result["count"], {"value": 42, "probabilities": None})
-        self.assertEqual(result["enabled"]["value"], True)
+        self.assertEqual(result["count"], 42)
+        self.assertEqual(result["enabled"], True)
         self.assertNotIn(3, fake.candidate_sets[0])
         self.assertIn(3, fake.candidate_sets[1])
         self.assertIn(
