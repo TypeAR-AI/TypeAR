@@ -27,11 +27,15 @@ class SGLangClient:
         *,
         thinking: bool = False,
         thinking_budget: int = 1024,
+        text_max_tokens: int = 512,
     ) -> None:
         if type(thinking) is not bool:
             raise ValueError("thinking must be a boolean")
         if type(thinking_budget) is not int or thinking_budget <= 0:
             raise ValueError("thinking_budget must be a positive integer")
+        if type(text_max_tokens) is not int or text_max_tokens <= 0:
+            raise ValueError("text_max_tokens must be a positive integer")
+        self.text_max_tokens = text_max_tokens
         self.thinking = thinking
         self.thinking_budget = thinking_budget
         self.base_url = base_url.rstrip("/")
@@ -317,6 +321,47 @@ class SGLangClient:
             meta = item.get("meta_info", {}) if isinstance(item, Mapping) else {}
             results.append((scores, meta if isinstance(meta, Mapping) else {}))
         return results, elapsed
+
+    def generate_texts(self, prefixes, max_lengths, *, temperature=0, seed=0):
+        """Generate JSON strings in a native batch, then validate every value."""
+        if len(prefixes) != len(max_lengths):
+            raise ValueError("prefixes and max_lengths must have the same length")
+        if not prefixes:
+            return []
+        params = []
+        for limit in max_lengths:
+            schema = {"type": "string"}
+            if limit is not None:
+                schema["maxLength"] = limit
+            params.append({"max_new_tokens": self.text_max_tokens,
+                           "temperature": temperature, "sampling_seed": seed,
+                           "json_schema": json.dumps(schema)})
+        response = self._request("/generate", {"text": list(prefixes), "sampling_params": params})
+        if isinstance(response, Mapping) and len(prefixes) == 1:
+            response = [response]
+        if not isinstance(response, list) or len(response) != len(prefixes):
+            raise SGLangError("Unexpected text batch response shape")
+        values = []
+        for item, limit in zip(response, max_lengths):
+            if not isinstance(item, Mapping):
+                raise SGLangError("Invalid text response")
+            meta = item.get("meta_info", {})
+            finish = meta.get("finish_reason", {}) if isinstance(meta, Mapping) else {}
+            kind = finish.get("type") if isinstance(finish, Mapping) else finish
+            if kind != "stop":
+                raise SGLangError(f"Text generation did not complete normally: {finish!r}")
+            try:
+                value = json.loads(item["text"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise SGLangError("Text generation returned an invalid JSON string") from exc
+            if not isinstance(value, str):
+                raise SGLangError("Text generation returned a non-string value")
+            if any(0xD800 <= ord(c) <= 0xDFFF for c in value):
+                raise SGLangError("Text generation returned an unpaired Unicode surrogate")
+            if limit is not None and len(value) > limit:
+                raise SGLangError("Text generation exceeded maxLength")
+            values.append(value)
+        return values
 
     def flush_cache(self) -> None:
         reply = self._request("/flush_cache", {}, allow_text=True)

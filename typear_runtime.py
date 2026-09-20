@@ -33,10 +33,16 @@ class Choice:
     numeric_type: str | None = None
     minimum: int | float | None = None
     maximum: int | float | None = None
+    text_type: bool = False
+    max_length: int | None = None
 
     def __post_init__(self) -> None:
-        if not self.choices and self.numeric_type is None:
+        if not self.choices and self.numeric_type is None and not self.text_type:
             raise ValueError("Choice.choices must not be empty")
+        if self.text_type and (self.choices or self.numeric_type is not None):
+            raise ValueError("Text choices cannot have enum values or a numeric type")
+        if self.max_length is not None and (type(self.max_length) is not int or self.max_length < 0):
+            raise ValueError("max_length must be a non-negative integer")
         if self.numeric_type not in {None, "integer", "number"}:
             raise ValueError("numeric_type must be None, 'integer', or 'number'")
         if self.numeric_type is not None and self.choices:
@@ -50,6 +56,9 @@ class Choice:
             raise ValueError("Choice labels must be non-empty strings")
 
     def opening_text(self) -> str:
+        if self.text_type:
+            limit = "" if self.max_length is None else f" Maximum {self.max_length} characters."
+            return f"Text(name={json.dumps(self.name)})\nReturn only a JSON string.{limit}\nInstructions: {self.question}"
         question = json.dumps(self.question, ensure_ascii=False)
         if self.numeric_type is not None:
             attributes = []
@@ -111,6 +120,7 @@ class TypeARClient:
         numeric_cache_dir: str | os.PathLike[str] | None = None,
         thinking: bool = False,
         thinking_budget: int = 1024,
+        text_max_tokens: int = 512,
     ) -> None:
         _validate_decoding(mode, temperature)
         _validate_execution(execution)
@@ -124,6 +134,7 @@ class TypeARClient:
             numeric_cache_dir=numeric_cache_dir,
             thinking=thinking,
             thinking_budget=thinking_budget,
+            text_max_tokens=text_max_tokens,
         )
         self.mode = mode
         self.execution = execution
@@ -176,6 +187,8 @@ class TypeARClient:
                     numeric_type=item.numeric_type,
                     minimum=item.minimum,
                     maximum=item.maximum,
+                    text_type=item.text_type,
+                    max_length=item.max_length,
                 )
                 for item in decisions
             ]
@@ -315,7 +328,7 @@ class TypeARClient:
             if return_probabilities:
                 probabilities = (
                     None
-                    if decision.numeric_type is not None
+                    if decision.numeric_type is not None or decision.text_type
                     else {
                         decision.choices[label]: probability
                         for label, probability in row["probabilities"].items()
@@ -575,6 +588,15 @@ def _execute_decisions(
             user_content = context.rstrip() + "\n\n" + user_content
         messages.append({"role": "user", "content": user_content})
         prefix = client.render_chat(messages, add_generation_prompt=True)
+        if decision.text_type:
+            value = client.generate_texts([prefix], [decision.max_length],
+                temperature=0 if mode == "argmax" else temperature,
+                seed=rng.randrange(2**31))[0]
+            messages.append({"role": "assistant", "content": json.dumps(value, ensure_ascii=False)})
+            prefix = client.render_chat(messages, add_generation_prompt=False)
+            results.append({"name": decision.name, "question": decision.question,
+                            "label": None, "value": value, "probabilities": None})
+            continue
         if decision.numeric_type is not None:
             semantic_value, prefix, generated_text = _decode_numeric(
                 client,
@@ -667,12 +689,16 @@ def _execute_batch_decisions(
     prompts: list[str] = []
 
     finite_indexes: list[int] = []
-    numeric_results: dict[int, tuple[dict, str]] = {}
+    open_results: dict[int, tuple[dict, str]] = {}
+    text_pending = []
     for index, decision in enumerate(decisions):
         messages = shared_messages + [
             {"role": "user", "content": decision.opening_text()}
         ]
         prompt = client.render_chat(messages, add_generation_prompt=True)
+        if decision.text_type:
+            text_pending.append((index, decision, prompt, messages))
+            continue
         if decision.numeric_type is not None:
             value, _completed, generated_text = _decode_numeric(
                 client,
@@ -683,7 +709,7 @@ def _execute_batch_decisions(
                 rng,
                 numeric_max_digits,
             )
-            numeric_results[index] = (
+            open_results[index] = (
                 {
                     "name": decision.name,
                     "question": decision.question,
@@ -715,11 +741,26 @@ def _execute_batch_decisions(
             {label: token_id for label, (token_id, _) in label_tokens.items()},
         )
 
+    if text_pending:
+        values = client.generate_texts(
+            [item[2] for item in text_pending],
+            [item[1].max_length for item in text_pending],
+            temperature=0 if mode == "argmax" else temperature,
+            seed=rng.randrange(2**31),
+        )
+        for (index, decision, prompt, messages), value in zip(text_pending, values):
+            completed = client.render_chat(messages + [{"role": "assistant", "content": json.dumps(value, ensure_ascii=False)}], add_generation_prompt=False)
+            open_results[index] = ({"name": decision.name, "question": decision.question,
+                                       "label": None, "value": value, "probabilities": None}, completed)
+
     # Warm the exact common prefix once, then let SGLang fork the cached state
     # across the K batched prompts. TypeAR never reads or moves KV tensors.
-    cache_meta = client.cache_prefix(shared_prefix)
-    LOG.info("batch_shared_prefix_cached_tokens=%s", cache_meta.get("cached_tokens"))
-    scored, elapsed = client.score_candidates_batch(prompts, candidate_ids)
+    if prompts:
+        cache_meta = client.cache_prefix(shared_prefix)
+        LOG.info("batch_shared_prefix_cached_tokens=%s", cache_meta.get("cached_tokens"))
+        scored, elapsed = client.score_candidates_batch(prompts, candidate_ids)
+    else:
+        scored, elapsed = [], 0.0
 
     results: list[dict] = []
     completed_prompts: list[str] = []
@@ -772,13 +813,13 @@ def _execute_batch_decisions(
             }
         )
 
-    if numeric_results:
+    if open_results:
         finite_rows = iter(zip(results, completed_prompts))
         merged_results: list[dict] = []
         merged_prompts: list[str] = []
         for index in range(len(decisions)):
-            if index in numeric_results:
-                row, prompt = numeric_results[index]
+            if index in open_results:
+                row, prompt = open_results[index]
             else:
                 row, prompt = next(finite_rows)
             merged_results.append(row)
@@ -859,6 +900,7 @@ def run_schema(
     numeric_cache_dir: str | os.PathLike[str] | None = None,
     thinking: bool = False,
     thinking_budget: int = 1024,
+    text_max_tokens: int = 512,
     print_final_prompt: bool = False,
 ) -> dict[str, Any]:
     client = TypeARClient(
@@ -873,6 +915,7 @@ def run_schema(
         numeric_cache_dir=numeric_cache_dir,
         thinking=thinking,
         thinking_budget=thinking_budget,
+        text_max_tokens=text_max_tokens,
     )
     return client.generate(
         context=context,
