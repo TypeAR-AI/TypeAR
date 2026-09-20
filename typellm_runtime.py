@@ -11,15 +11,15 @@ from dataclasses import dataclass
 from string import ascii_uppercase, digits
 from typing import Any, Mapping, Sequence
 
-from typear_schema import (
+from typellm_schema import (
     MAX_ENUM_CHOICES,
     SchemaError,
     compile_json_schema,
 )
-from typear_sglang import SGLangClient
+from typellm_sglang import SGLangClient
 
 
-LOG = logging.getLogger("typear")
+LOG = logging.getLogger("typellm")
 
 
 @dataclass(frozen=True)
@@ -99,7 +99,7 @@ class Choice:
         return "\n".join(lines)
 
 
-class TypeARClient:
+class TypeLLMClient:
     """Compile ordered schemas into constrained single-token decisions."""
 
     DEFAULT_LABEL_POOL = tuple(ascii_uppercase + digits)
@@ -195,7 +195,7 @@ class TypeARClient:
         if not isinstance(properties, list):
             raise SchemaError(
                 "schema.properties must be either an ordered JSON Schema object "
-                "or a legacy TypeAR list"
+                "or a legacy TypeLLM list"
             )
         if not properties:
             raise SchemaError("schema.properties must not be empty")
@@ -754,7 +754,7 @@ def _execute_batch_decisions(
                                        "label": None, "value": value, "probabilities": None}, completed)
 
     # Warm the exact common prefix once, then let SGLang fork the cached state
-    # across the K batched prompts. TypeAR never reads or moves KV tensors.
+    # across the K batched prompts. TypeLLM never reads or moves KV tensors.
     if prompts:
         cache_meta = client.cache_prefix(shared_prefix)
         LOG.info("batch_shared_prefix_cached_tokens=%s", cache_meta.get("cached_tokens"))
@@ -903,7 +903,7 @@ def run_schema(
     text_max_tokens: int = 512,
     print_final_prompt: bool = False,
 ) -> dict[str, Any]:
-    client = TypeARClient(
+    client = TypeLLMClient(
         base_url or os.environ.get("SGLANG_URL", "http://127.0.0.1:30000"),
         model or os.environ.get("SGLANG_MODEL"),
         mode=mode,

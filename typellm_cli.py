@@ -1,4 +1,4 @@
-"""Runnable example and CLI for the TypeAR prototype."""
+"""Runnable example and CLI for the TypeLLM prototype."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ import logging
 import os
 from typing import Any
 
-from typear_benchmark import benchmark_prefix_cache
-from typear_runtime import TypeARClient
+from typellm_benchmark import benchmark_prefix_cache
+from typellm_runtime import TypeLLMClient
 
 
 def example_schema() -> dict[str, Any]:
@@ -69,7 +69,7 @@ def main() -> None:
         "the trip was approved by the employee's manager."
     )
     schema = example_schema()
-    client = TypeARClient(
+    client = TypeLLMClient(
         args.server_url,
         args.model,
         mode=args.mode,

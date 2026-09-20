@@ -1,4 +1,4 @@
-"""Compilation for TypeAR's schema subset and bounded open values."""
+"""Compilation for TypeLLM's schema subset and bounded open values."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ def _has_duplicates(values: Sequence[Any]) -> bool:
 
 
 def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
-    """Compile an ordered JSON Schema object into TypeAR decisions."""
+    """Compile an ordered JSON Schema object into TypeLLM decisions."""
     if not isinstance(schema, Mapping):
         raise SchemaError("schema must be a mapping")
     if schema.get("type") != "object":

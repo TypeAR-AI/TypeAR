@@ -1,4 +1,4 @@
-"""Prefix-cache benchmark utilities for TypeAR."""
+"""Prefix-cache benchmark utilities for TypeLLM."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ import statistics
 import uuid
 from typing import Any, Sequence
 
-from typear_runtime import Choice
-from typear_sglang import SGLangClient
+from typellm_runtime import Choice
+from typellm_sglang import SGLangClient
 
 
 def benchmark_prefix_cache(
