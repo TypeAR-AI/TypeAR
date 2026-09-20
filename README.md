@@ -336,3 +336,7 @@ context length, batching, memory bandwidth, and cache eviction.
 
 This describes self-hosted compute. A hosted provider may still bill the full
 submitted input unless it offers cached-input pricing.
+
+## License
+
+[Apache License 2.0](LICENSE).
