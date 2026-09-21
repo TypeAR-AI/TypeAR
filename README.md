@@ -53,8 +53,8 @@ without `enum` generate values token by token. See [schemas and examples](#outpu
 
 ### 1. Serve a model with SGLang
 
-Use [SGLang](https://github.com/sgl-project/sglang) 0.5.6 or newer to configure and
-serve a compatible autoregressive model on your local GPU server. This example uses
+Use [SGLang](https://github.com/sgl-project/sglang) to configure and serve a
+compatible autoregressive model on your local GPU server. This example uses
 Qwen3.8-27B; follow the
 [Qwen3.8-27B SGLang deployment guide](https://lmsysorg.mintlify.app/cookbook/autoregressive/Qwen/Qwen3.8-27B)
 to start it with prefix caching enabled.
