@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img width="1500" height="500" alt="typellm-banner" src="https://github.com/user-attachments/assets/b1f2dbc6-21b7-4222-a0fb-dacfe1650797" />
+<img width="1500" alt="typellm-banner" src="https://github.com/user-attachments/assets/b1f2dbc6-21b7-4222-a0fb-dacfe1650797" />
 
 # TypeLLM: LLMs with type-safe generation
 
