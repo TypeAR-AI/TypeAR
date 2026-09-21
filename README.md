@@ -53,8 +53,8 @@ without `enum` generate values token by token. See [schemas and examples](#outpu
 
 ### 1. Serve a model with SGLang
 
-Use [SGLang](https://github.com/sgl-project/sglang) to configure and serve a
-compatible autoregressive model on your local GPU server. This example uses
+Use [SGLang](https://github.com/sgl-project/sglang) 0.5.6 or newer to configure and
+serve a compatible autoregressive model on your local GPU server. This example uses
 Qwen3.8-27B; follow the
 [Qwen3.8-27B SGLang deployment guide](https://lmsysorg.mintlify.app/cookbook/autoregressive/Qwen/Qwen3.8-27B)
 to start it with prefix caching enabled.
@@ -149,6 +149,9 @@ if thinking reaches its length limit, it keeps the partial reasoning, closes the
 thinking block, and proceeds with constrained decoding. Server and network errors
 still propagate.
 
+Models whose chat template always opens a `<think>` block reason before every
+field even with `thinking=False`; `thinking_budget` still caps it.
+
 ## Testing
 
 To run the 128-case numeric regression, first serve `Qwen/Qwen3.8-27B` with SGLang
@@ -221,10 +224,11 @@ print(result)
 # {"answer": 70.0}
 ```
 
-Numeric fields accept optional `minimum` and `maximum`. The bounds are shown to
-the model and the generated value is validated against them; an out-of-range
-value raises `ValueError` instead of being returned. Numbers use plain decimal
-notation with at most `TypeLLMClient(numeric_max_digits=32)` digits.
+Numeric fields without `enum` accept optional `minimum` and `maximum`. The bounds
+are shown to the model and the generated value is validated against them; an out-of-range
+value raises `ValueError` instead of being returned. These fields generate plain
+decimal notation with at most 32 digits by default; set
+`TypeLLMClient(numeric_max_digits=...)` to adjust this limit.
 
 Use `instructions` to tell the model what decision to make:
 

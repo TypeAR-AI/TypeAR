@@ -567,6 +567,13 @@ class ThinkingTests(unittest.TestCase):
             client.render_chat([], add_generation_prompt=True)
         client._request.assert_not_called()
 
+    def test_always_thinking_template_reasons_even_when_thinking_is_off(self):
+        client = self.make_client()
+        client.thinking = False
+        prompt = client.render_chat([], add_generation_prompt=True)
+        self.assertEqual(prompt, "assistant\n<think>\nWork done. </think>\n\n")
+        self.assertFalse(client._chat_tokenizer.apply_chat_template.call_args.kwargs["enable_thinking"])
+
     def test_history_render_never_runs_thinking(self):
         client = self.make_client()
         client.render_chat([], add_generation_prompt=False)
@@ -601,6 +608,17 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         self.assertEqual(
             client.end_of_message_token(), (248046, "<|im_end|>")
         )
+
+    def test_template_bos_is_dropped_only_when_the_tokenizer_adds_its_own(self):
+        client = SGLangClient()
+        tokenizer = FakeChatTokenizer()
+        tokenizer.bos_token, tokenizer.bos_token_id = "<s>", 1
+        tokenizer.apply_chat_template = lambda messages, **kwargs: "<s>rendered-chat"
+        client._chat_tokenizer = tokenizer
+        for encoded, expected in (([1, 120], "rendered-chat"), ([120], "<s>rendered-chat")):
+            with self.subTest(encoded=encoded):
+                tokenizer.encode = lambda text, encoded=encoded: encoded
+                self.assertEqual(client.render_chat([], add_generation_prompt=True), expected)
 
     def test_manual_choice_is_limited_to_sixteen_values(self):
         from typellm import Choice
@@ -749,6 +767,40 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         )
         self.assertIn("<assistant>-0.75<eom>", client.last_prompt)
 
+    def test_open_integer_beyond_float_range_preserves_value_and_bounds(self):
+        big = 10**400
+        for execution in ("sequential", "batch"):
+            for value in (big, -big):
+                for bounds, error in (
+                    ({"minimum": value, "maximum": value}, None),
+                    ({"minimum": value + 1}, "below minimum"),
+                    ({"maximum": value - 1}, "above maximum"),
+                ):
+                    with self.subTest(execution=execution, value=value, bounds=bounds):
+                        client = TypeLLMClient(execution=execution, numeric_max_digits=401)
+                        client.sglang = FakeSGLang(
+                            [9001, 3], numeric_pieces=[(9001, str(value))]
+                        )
+                        questions = {"n": {"type": "integer", **bounds}}
+                        if error is not None:
+                            with self.assertRaisesRegex(ValueError, error):
+                                client.generate(context="context", questions=questions)
+                        else:
+                            result = client.generate(context="context", questions=questions)
+                            self.assertEqual(result, {"n": value})
+                            self.assertIs(type(result["n"]), int)
+
+    def test_open_number_still_rejects_float_overflow(self):
+        for execution in ("sequential", "batch"):
+            for sign in ("", "-"):
+                with self.subTest(execution=execution, sign=sign):
+                    client = TypeLLMClient(execution=execution, numeric_max_digits=401)
+                    client.sglang = FakeSGLang(
+                        [9001, 3], numeric_pieces=[(9001, sign + str(10**400))]
+                    )
+                    with self.assertRaisesRegex(ValueError, "non-finite number"):
+                        client.generate(context="context", questions={"n": {"type": "number"}})
+
     def test_open_number_never_enters_a_dead_end_at_the_digit_limit(self):
         client = TypeLLMClient(numeric_max_digits=2)
         fake = FakeSGLang([ord("1"), ord("2"), 3])
@@ -797,6 +849,52 @@ class JsonSchemaExecutionTests(unittest.TestCase):
             with self.assertRaisesRegex(SGLangError, "timed out"):
                 SGLangClient()._request("/generate", {"text": "x"})
 
+    def test_truncated_response_is_reported_as_sglang_error(self):
+        from http.client import IncompleteRead
+        from unittest.mock import MagicMock, patch
+
+        error = IncompleteRead(b'{"text":', 20)
+        response = MagicMock()
+        response.__enter__.return_value.read.side_effect = error
+        with patch("urllib.request.urlopen", return_value=response):
+            with self.assertRaisesRegex(SGLangError, "IncompleteRead") as caught:
+                SGLangClient()._request("/generate", {"text": "x"})
+        self.assertIs(caught.exception.__cause__, error)
+
+    def test_http_error_preserves_status_when_error_body_read_fails(self):
+        from http.client import IncompleteRead
+        from urllib.error import HTTPError
+        from unittest.mock import Mock, patch
+
+        for read_error in (IncompleteRead(b"partial", 20), TimeoutError("timed out")):
+            with self.subTest(read_error=read_error):
+                body = Mock(closed=False, read=Mock(side_effect=read_error))
+                error = HTTPError(
+                    "http://localhost/generate", 503, "Unavailable", {}, body
+                )
+                with patch("urllib.request.urlopen", side_effect=error):
+                    with self.assertRaisesRegex(
+                        SGLangError, "HTTP 503.*Could not read error response"
+                    ) as caught:
+                        SGLangClient()._request("/generate", {"text": "x"})
+                self.assertIs(caught.exception.__cause__, error)
+                body.close.assert_called_once()
+
+    def test_http_error_preserves_body_and_closes_response(self):
+        from io import BytesIO
+        from urllib.error import HTTPError
+        from unittest.mock import patch
+
+        body = BytesIO(b"server unavailable")
+        error = HTTPError("http://localhost/generate", 503, "Unavailable", {}, body)
+        with patch("urllib.request.urlopen", side_effect=error):
+            with self.assertRaisesRegex(
+                SGLangError, "HTTP 503: server unavailable"
+            ) as caught:
+                SGLangClient()._request("/generate", {"text": "x"})
+        self.assertIs(caught.exception.__cause__, error)
+        self.assertTrue(body.closed)
+
     def test_info_endpoints_use_current_sglang_names(self):
         from unittest.mock import Mock
         client = SGLangClient()
@@ -807,6 +905,31 @@ class JsonSchemaExecutionTests(unittest.TestCase):
             [call.args[0] for call in client._request.call_args_list],
             ["/model_info", "/server_info"],
         )
+
+    def test_info_endpoints_fall_back_to_old_names_only_on_404(self):
+        from io import BytesIO
+        from unittest.mock import MagicMock, patch
+        from urllib.error import HTTPError
+
+        def urlopen(request, timeout):
+            if "/get_" not in request.full_url:
+                raise HTTPError(request.full_url, 404, "Not Found", {}, BytesIO(b"Not Found"))
+            response = MagicMock()
+            response.__enter__.return_value.read.return_value = b'{"context_length": 4096}'
+            return response
+
+        with patch("urllib.request.urlopen", side_effect=urlopen) as opened:
+            self.assertEqual(SGLangClient()._context_length(), 4096)
+        self.assertEqual(
+            [call.args[0].full_url.rsplit("/", 1)[1] for call in opened.call_args_list],
+            ["server_info", "get_server_info"],
+        )
+
+        error = HTTPError("http://localhost/server_info", 500, "Error", {}, BytesIO(b"boom"))
+        with patch("urllib.request.urlopen", side_effect=error) as opened:
+            with self.assertRaisesRegex(SGLangError, "HTTP 500"):
+                SGLangClient()._context_length()
+        self.assertEqual(opened.call_count, 1)
 
     def test_open_numeric_batch_preserves_schema_order(self):
         schema = {

@@ -490,7 +490,7 @@ def _parse_numeric_value(text: str, decision: Choice) -> int | float:
     value: int | float = (
         int(text) if decision.numeric_type == "integer" else float(text)
     )
-    if not math.isfinite(float(value)):
+    if isinstance(value, float) and not math.isfinite(value):
         raise ValueError(f"Generated non-finite number for {decision.name!r}")
     if decision.minimum is not None and value < decision.minimum:
         raise ValueError(

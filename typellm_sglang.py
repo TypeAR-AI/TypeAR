@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import os
@@ -54,9 +55,19 @@ class SGLangClient:
         self._numeric_tokens: list[tuple[int, str]] | None = None
         self._chat_tokenizer: Any | None = None
 
+    def _info(self, name: str) -> Any:
+        # SGLang 0.5.6 renamed /get_<name> to /<name>; older servers and
+        # sglang-router 0.3.2 only know the old name.
+        try:
+            return self._request(f"/{name}")
+        except SGLangError as exc:
+            if getattr(exc.__cause__, "code", None) != 404:
+                raise
+            return self._request(f"/get_{name}")
+
     def _model_info(self) -> Mapping[str, Any]:
         if self._model_info_cache is None:
-            response = self._request("/model_info")
+            response = self._info("model_info")
             if not isinstance(response, Mapping):
                 raise SGLangError("/model_info returned a non-object response")
             self._model_info_cache = response
@@ -80,13 +91,18 @@ class SGLangClient:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 raw = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
+            try:
+                with exc:
+                    detail = exc.read().decode("utf-8", errors="replace")
+            except (OSError, http.client.HTTPException) as read_error:
+                detail = f"Could not read error response: {read_error}"
             raise SGLangError(
                 f"SGLang {path} returned HTTP {exc.code}: {detail}"
             ) from exc
-        except OSError as exc:
+        except (OSError, http.client.HTTPException) as exc:
             # URLError covers connection failures; read timeouts and resets
-            # surface as bare OSError subclasses.
+            # surface as bare OSError subclasses, and truncated responses as
+            # http.client.IncompleteRead.
             raise SGLangError(
                 f"Could not reach SGLang at {self.base_url}: {exc}"
             ) from exc
@@ -179,14 +195,21 @@ class SGLangClient:
             ) from exc
         if not isinstance(rendered, str):
             raise SGLangError("Tokenizer chat template returned non-text output")
-        if self.thinking and add_generation_prompt:
+        # SGLang tokenizes the prompt with special tokens, so a tokenizer that
+        # prepends BOS would double the one the template already wrote.
+        bos = getattr(tokenizer, "bos_token", None)
+        if bos and rendered.startswith(bos) and tokenizer.encode("x")[0] == tokenizer.bos_token_id:
+            rendered = rendered[len(bos):]
+        # A template that leaves <think> open makes the model reason whatever
+        # the flag says; let it finish rather than score inside the block.
+        if add_generation_prompt and (self.thinking or rendered.rstrip().endswith("<think>")):
             return self._finish_thinking(rendered)
         return rendered
 
     def _context_length(self) -> int:
         """Read the served context window, including any server override."""
         if self._context_length_cache is None:
-            info = self._request("/server_info")
+            info = self._info("server_info")
             candidates = []
             if isinstance(info, Mapping):
                 candidates.append(info.get("context_length"))
