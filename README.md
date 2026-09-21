@@ -72,13 +72,13 @@ client = TypeLLMClient(
 )
 ```
 
-Install TypeLLM and its lightweight client-side tokenizer dependencies:
+Install the TypeLLM client (lightweight, tokenizer-only dependencies):
 
 ```bash
 pip install typellm
 ```
 
-Or, if you cloned this repository:
+Or, if you cloned this repo:
 
 ```bash
 pip install -r requirements.txt
