@@ -47,7 +47,7 @@ def main() -> None:
     parser.add_argument("--model", default=os.environ.get("SGLANG_MODEL"))
     parser.add_argument(
         "--tokenizer",
-        default=os.environ.get("TYPEAR_TOKENIZER"),
+        default=os.environ.get("TYPELLM_TOKENIZER"),
         help="Tokenizer path or Hugging Face ID; normally discovered from SGLang",
     )
     parser.add_argument("--mode", choices=("argmax", "sample"), default="argmax")
