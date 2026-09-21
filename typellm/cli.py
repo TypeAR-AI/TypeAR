@@ -8,8 +8,8 @@ import logging
 import os
 from typing import Any
 
-from typellm_benchmark import benchmark_prefix_cache
-from typellm_runtime import TypeLLMClient
+from .benchmark import benchmark_prefix_cache
+from .runtime import TypeLLMClient
 
 
 def example_schema() -> dict[str, Any]:
@@ -38,6 +38,7 @@ def example_schema() -> dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
+        prog="typellm",
         description="Type-safe decisions over SGLang /generate"
     )
     parser.add_argument(

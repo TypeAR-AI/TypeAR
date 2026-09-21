@@ -1,15 +1,17 @@
 import json
 import math
 import random
+import sys
 import time
 from collections import defaultdict
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from typellm import TypeLLMClient
 
 
 SEED = 20260918
-EVAL_DIR = Path("evals")
+EVAL_DIR = Path(__file__).resolve().parent
 CASES_PATH = EVAL_DIR / "numeric_eval_cases.jsonl"
 RESULTS_PATH = EVAL_DIR / "numeric_eval_formal_results.jsonl"
 

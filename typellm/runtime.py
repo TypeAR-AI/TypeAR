@@ -11,12 +11,12 @@ from dataclasses import dataclass
 from string import ascii_uppercase, digits
 from typing import Any, Mapping, Sequence
 
-from typellm_schema import (
+from .schema import (
     MAX_ENUM_CHOICES,
     SchemaError,
     compile_json_schema,
 )
-from typellm_sglang import SGLangClient
+from .sglang import SGLangClient
 
 
 LOG = logging.getLogger("typellm")

@@ -7,7 +7,7 @@ from typellm import (
     TypeLLMClient,
     compile_json_schema,
 )
-from typellm_numeric import build_numeric_token_table
+from typellm.numeric import build_numeric_token_table
 
 
 class FakeSGLang:
@@ -197,7 +197,7 @@ class JsonSchemaCompilerTests(unittest.TestCase):
         import tempfile
         from pathlib import Path
         from unittest.mock import patch
-        import typellm_numeric
+        import typellm.numeric
 
         class FakeTokenizer:
             def to_str(self):
@@ -210,12 +210,12 @@ class JsonSchemaCompilerTests(unittest.TestCase):
                 return {5: "5", 6: "kg"}[ids[0]]
 
         with tempfile.TemporaryDirectory() as directory, patch.object(
-            typellm_numeric, "_load_tokenizer", return_value=FakeTokenizer()
+            typellm.numeric, "_load_tokenizer", return_value=FakeTokenizer()
         ):
-            load = typellm_numeric.load_numeric_token_table
+            load = typellm.numeric.load_numeric_token_table
             self.assertEqual(load("source", directory), [(5, "5")])
             [cache_file] = Path(directory).iterdir()
-            with patch.object(typellm_numeric, "build_numeric_token_table") as rebuild:
+            with patch.object(typellm.numeric, "build_numeric_token_table") as rebuild:
                 self.assertEqual(load("source", directory), [(5, "5")])
                 rebuild.assert_not_called()
             cache_file.write_text("{truncated", encoding="utf-8")
@@ -404,7 +404,7 @@ class QuestionsInterfaceTests(unittest.TestCase):
         from typellm import run_schema
         questions = {"paid": {"type": "boolean"}}
         for kwargs in [{"questions": questions}, {"schema": {"type": "object", "properties": questions}}]:
-            with patch("typellm_runtime.SGLangClient", return_value=FakeSGLang([ord("A")])):
+            with patch("typellm.runtime.SGLangClient", return_value=FakeSGLang([ord("A")])):
                 self.assertEqual(run_schema(state="Paid", **kwargs), {"paid": True})
         with self.assertRaises(ValueError):
             run_schema("Paid", state="Paid", questions=questions)
@@ -444,9 +444,9 @@ class QuestionsInterfaceTests(unittest.TestCase):
         from unittest.mock import patch
         from typellm import run_schema
         questions = {"paid": {"type": "boolean"}}
-        with patch("typellm_runtime.SGLangClient", return_value=FakeSGLang([ord("A")])):
+        with patch("typellm.runtime.SGLangClient", return_value=FakeSGLang([ord("A")])):
             new = run_schema("Context", questions=questions)
-        with patch("typellm_runtime.SGLangClient", return_value=FakeSGLang([ord("A")])):
+        with patch("typellm.runtime.SGLangClient", return_value=FakeSGLang([ord("A")])):
             old = run_schema("Context", {"type": "object", "properties": questions})
         self.assertEqual(new, old)
         self.assertEqual(new, {"paid": True})
@@ -468,7 +468,7 @@ class ThinkingTests(unittest.TestCase):
         self.assertGreater(params["max_new_tokens"], 2048)
         self.assertLess(params["max_new_tokens"], 8192)
         self.assertEqual(params["stop"], ["</think>"])
-        with patch("typellm_runtime.TypeLLMClient") as factory:
+        with patch("typellm.runtime.TypeLLMClient") as factory:
             run_schema(context="x", questions={"flag": {"type": "boolean"}})
             self.assertIsNone(factory.call_args.kwargs["thinking_budget"])
 

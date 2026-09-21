@@ -8,8 +8,8 @@ import statistics
 import uuid
 from typing import Any, Sequence
 
-from typellm_runtime import Choice
-from typellm_sglang import SGLangClient
+from .runtime import Choice
+from .sglang import SGLangClient
 
 
 def benchmark_prefix_cache(
