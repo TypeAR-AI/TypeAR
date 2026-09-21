@@ -2,7 +2,7 @@ import json
 import unittest
 from unittest.mock import patch
 from typellm import TypeLLMClient, SGLangClient, SGLangError, SchemaError, compile_json_schema, run_schema
-from test_typellm import FakeSGLang, FakeChatTokenizer
+from tests.test_typellm import FakeSGLang, FakeChatTokenizer
 
 
 class TextTests(unittest.TestCase):
@@ -60,7 +60,7 @@ class TextTests(unittest.TestCase):
         for execution in ('batch','sequential'):
             fake=FakeSGLang()
             fake.generate_texts=lambda prefixes,limits,**kwargs:['hello']*len(prefixes)
-            with patch('typellm_runtime.SGLangClient',return_value=fake) as constructor:
+            with patch('typellm.runtime.SGLangClient',return_value=fake) as constructor:
                 self.assertEqual(run_schema(state='x',questions={'t':{'type':'string'}},execution=execution,text_max_tokens=24),{'t':'hello'})
                 self.assertEqual(constructor.call_args.kwargs['text_max_tokens'],24)
         for budget in (0,-1,True):

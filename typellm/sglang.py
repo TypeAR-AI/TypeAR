@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Mapping, Sequence
 
-from typellm_numeric import load_numeric_token_table
+from .numeric import load_numeric_token_table
 
 
 class SGLangError(RuntimeError):

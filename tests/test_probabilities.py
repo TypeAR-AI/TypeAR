@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from typellm import TypeLLMClient, SchemaError, compile_json_schema, run_schema
-from test_typellm import FakeSGLang
+from tests.test_typellm import FakeSGLang
 
 
 class FieldProbabilityTests(unittest.TestCase):
@@ -15,7 +15,7 @@ class FieldProbabilityTests(unittest.TestCase):
             ):
                 with self.subTest(execution=execution, field_type=field_type):
                     fake = FakeSGLang([ord('B'), ord('A'), ord('B')])
-                    with patch('typellm_runtime.SGLangClient', return_value=fake):
+                    with patch('typellm.runtime.SGLangClient', return_value=fake):
                         result = run_schema(context='receipt', execution=execution, questions={
                             'choice': {'type': field_type, 'enum': candidates, 'return_probabilities': True},
                             'flag': {'type': 'boolean', 'return_probabilities': True},

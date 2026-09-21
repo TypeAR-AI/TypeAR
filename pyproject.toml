@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "typellm"
-version = "0.1.1"
+version = "0.1.2"
 description = "Type-Safe Decoding for Autoregressive LLMs"
 readme = "README.md"
 license = "Apache-2.0"
@@ -21,15 +21,7 @@ Homepage = "https://typellm.ai/"
 Repository = "https://github.com/TypeLLM/TypeLLM"
 
 [project.scripts]
-typellm = "typellm_cli:main"
+typellm = "typellm.cli:main"
 
 [tool.setuptools]
-py-modules = [
-    "typellm",
-    "typellm_benchmark",
-    "typellm_cli",
-    "typellm_numeric",
-    "typellm_runtime",
-    "typellm_schema",
-    "typellm_sglang",
-]
+packages = ["typellm"]

@@ -72,7 +72,13 @@ client = TypeLLMClient(
 )
 ```
 
-Install the lightweight client-side tokenizer dependencies:
+Install TypeLLM (lightweight client-side tokenizer dependencies):
+
+```bash
+pip install typellm
+```
+
+Or, if you cloned this repo:
 
 ```bash
 pip install -r requirements.txt
@@ -158,7 +164,7 @@ To run the 128-case numeric regression, first serve `Qwen/Qwen3.8-27B` with SGLa
 at `http://127.0.0.1:30000`, then run:
 
 ```bash
-python3 _numeric_eval.py
+python3 evals/numeric_eval.py
 ```
 
 The evaluation covers integer and number extraction, arithmetic, negative
