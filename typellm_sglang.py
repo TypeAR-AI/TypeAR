@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from typellm_numeric import load_numeric_token_table
@@ -24,7 +24,7 @@ class SGLangClient:
         model: str | None = None,
         timeout: float = 120.0,
         tokenizer: str | None = None,
-        numeric_cache_dir: str | Path | None = None,
+        numeric_cache_dir: str | os.PathLike[str] | None = None,
         *,
         thinking: bool = False,
         thinking_budget: int | None = None,
@@ -56,9 +56,9 @@ class SGLangClient:
 
     def _model_info(self) -> Mapping[str, Any]:
         if self._model_info_cache is None:
-            response = self._request("/get_model_info")
+            response = self._request("/model_info")
             if not isinstance(response, Mapping):
-                raise SGLangError("/get_model_info returned a non-object response")
+                raise SGLangError("/model_info returned a non-object response")
             self._model_info_cache = response
         return self._model_info_cache
 
@@ -84,7 +84,9 @@ class SGLangClient:
             raise SGLangError(
                 f"SGLang {path} returned HTTP {exc.code}: {detail}"
             ) from exc
-        except urllib.error.URLError as exc:
+        except OSError as exc:
+            # URLError covers connection failures; read timeouts and resets
+            # surface as bare OSError subclasses.
             raise SGLangError(
                 f"Could not reach SGLang at {self.base_url}: {exc}"
             ) from exc
@@ -107,7 +109,7 @@ class SGLangClient:
                 self.model = value
                 return value
         raise SGLangError(
-            "Could not discover a tokenizer model from /get_model_info; "
+            "Could not discover a tokenizer model from /model_info; "
             "pass model=... or set SGLANG_MODEL"
         )
 
@@ -184,7 +186,7 @@ class SGLangClient:
     def _context_length(self) -> int:
         """Read the served context window, including any server override."""
         if self._context_length_cache is None:
-            info = self._request("/get_server_info")
+            info = self._request("/server_info")
             candidates = []
             if isinstance(info, Mapping):
                 candidates.append(info.get("context_length"))
@@ -268,7 +270,12 @@ class SGLangClient:
         if label in self._label_tokens:
             return self._label_tokens[label]
         model = self._tokenizer_model()
-        tokenized = self._request("/v1/tokenize", {"model": model, "prompt": label})
+        # A label continues the prompt, so it must be tokenized without BOS;
+        # SGLang adds special tokens by default.
+        tokenized = self._request(
+            "/v1/tokenize",
+            {"model": model, "prompt": label, "add_special_tokens": False},
+        )
         token_ids = tokenized.get("tokens") if isinstance(tokenized, Mapping) else None
         if not isinstance(token_ids, list) or len(token_ids) != 1:
             raise ValueError(
@@ -285,7 +292,7 @@ class SGLangClient:
                 f"Candidate {label!r} tokenizes to ID {token_id}, but that token "
                 f"decodes as {token_text!r}; exact append would be ambiguous"
             )
-        result = (token_id, token_text)
+        result = (token_id, label)
         self._label_tokens[label] = result
         return result
 
@@ -371,7 +378,14 @@ class SGLangClient:
             results.append((scores, meta if isinstance(meta, Mapping) else {}))
         return results, elapsed
 
-    def generate_texts(self, prefixes, max_lengths, *, temperature=0, seed=0):
+    def generate_texts(
+        self,
+        prefixes: Sequence[str],
+        max_lengths: Sequence[int | None],
+        *,
+        temperature: float = 0,
+        seed: int = 0,
+    ) -> list[str]:
         """Generate JSON strings in a native batch, then validate every value."""
         if len(prefixes) != len(max_lengths):
             raise ValueError("prefixes and max_lengths must have the same length")
@@ -379,7 +393,7 @@ class SGLangClient:
             return []
         params = []
         for limit in max_lengths:
-            schema = {"type": "string"}
+            schema: dict[str, Any] = {"type": "string"}
             if limit is not None:
                 schema["maxLength"] = limit
             params.append({"max_new_tokens": self.text_max_tokens,

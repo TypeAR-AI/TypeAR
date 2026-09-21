@@ -59,7 +59,7 @@ class Choice:
     def opening_text(self) -> str:
         if self.text_type:
             limit = "" if self.max_length is None else f" Maximum {self.max_length} characters."
-            return f"Text(name={json.dumps(self.name)})\nReturn only a JSON string.{limit}\nInstructions: {self.question}"
+            return f"Text(name={json.dumps(self.name, ensure_ascii=False)})\nReturn only a JSON string.{limit}\nInstructions: {self.question}"
         question = json.dumps(self.question, ensure_ascii=False)
         if self.numeric_type is not None:
             attributes = []
@@ -449,7 +449,11 @@ def _numeric_transition(
     if '"' in piece:
         return None
     value_text = text + piece
-    if sum(char.isdigit() for char in value_text) > max_digits:
+    digit_count = sum(char.isdigit() for char in value_text)
+    # A trailing "." at the digit limit could never be completed.
+    if digit_count > max_digits or (
+        digit_count == max_digits and value_text.endswith(".")
+    ):
         return None
     return (
         (value_text, False)

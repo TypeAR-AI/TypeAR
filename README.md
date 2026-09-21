@@ -221,6 +221,11 @@ print(result)
 # {"answer": 70.0}
 ```
 
+Numeric fields accept optional `minimum` and `maximum`. The bounds are shown to
+the model and the generated value is validated against them; an out-of-range
+value raises `ValueError` instead of being returned. Numbers use plain decimal
+notation with at most `TypeLLMClient(numeric_max_digits=32)` digits.
+
 Use `instructions` to tell the model what decision to make:
 
 ```python

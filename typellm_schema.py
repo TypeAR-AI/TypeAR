@@ -45,6 +45,11 @@ def _has_duplicates(values: Sequence[Any]) -> bool:
     return False
 
 
+def _is_finite_number(value: Any) -> bool:
+    # Exact types exclude bool; Python ints are finite at any magnitude.
+    return type(value) is int or (type(value) is float and math.isfinite(value))
+
+
 def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
     """Compile an ordered JSON Schema object into TypeLLM decisions."""
     if not isinstance(schema, Mapping):
@@ -125,9 +130,7 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
             minimum = field.get("minimum")
             maximum = field.get("maximum")
             for keyword, bound in (("minimum", minimum), ("maximum", maximum)):
-                if bound is not None and not (
-                    type(bound) in {int, float} and math.isfinite(float(bound))
-                ):
+                if bound is not None and not _is_finite_number(bound):
                     raise SchemaError(
                         f"{keyword} for {name!r} must be a finite number"
                     )
@@ -165,10 +168,7 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
             elif field_type == "integer":
                 valid = all(type(value) is int for value in values)
             else:
-                valid = all(
-                    type(value) in {int, float} and math.isfinite(float(value))
-                    for value in values
-                )
+                valid = all(_is_finite_number(value) for value in values)
             if not valid:
                 raise SchemaError(
                     f"enum values for {name!r} do not match type {field_type!r}"

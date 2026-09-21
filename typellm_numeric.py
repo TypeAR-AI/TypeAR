@@ -42,7 +42,7 @@ def _could_participate_in_number(text: str) -> bool:
 
 
 def _default_cache_dir() -> Path:
-    configured = os.environ.get("TYPEAR_CACHE_DIR")
+    configured = os.environ.get("TYPELLM_CACHE_DIR")
     if configured:
         return Path(configured).expanduser()
     return Path.home() / ".cache" / "typellm" / "numeric_tokens"

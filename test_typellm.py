@@ -193,6 +193,35 @@ class JsonSchemaCompilerTests(unittest.TestCase):
             [(5, "5"), (54, "54"), (55, '54"')],
         )
 
+    def test_numeric_table_cache_round_trip_and_recovery(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        import typellm_numeric
+
+        class FakeTokenizer:
+            def to_str(self):
+                return "serialized-tokenizer"
+
+            def get_vocab(self, with_added_tokens=True):
+                return {"five": 5, "unit": 6}
+
+            def decode(self, ids, skip_special_tokens=False):
+                return {5: "5", 6: "kg"}[ids[0]]
+
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            typellm_numeric, "_load_tokenizer", return_value=FakeTokenizer()
+        ):
+            load = typellm_numeric.load_numeric_token_table
+            self.assertEqual(load("source", directory), [(5, "5")])
+            [cache_file] = Path(directory).iterdir()
+            with patch.object(typellm_numeric, "build_numeric_token_table") as rebuild:
+                self.assertEqual(load("source", directory), [(5, "5")])
+                rebuild.assert_not_called()
+            cache_file.write_text("{truncated", encoding="utf-8")
+            self.assertEqual(load("source", directory), [(5, "5")])
+            self.assertIn('"tokens":[[5,"5"]]', cache_file.read_text(encoding="utf-8"))
+
     def test_boolean(self):
         [decision] = compile_json_schema(
             {
@@ -249,6 +278,15 @@ class JsonSchemaCompilerTests(unittest.TestCase):
                 compile_json_schema(
                     {"type": "object", "properties": {"value": field}}
                 )
+
+    def test_integers_beyond_float_range_are_valid_json_numbers(self):
+        big = 10**400
+        [bounded, choice] = compile_json_schema({"type": "object", "properties": {
+            "bounded": {"type": "integer", "maximum": big},
+            "choice": {"type": "number", "enum": [big, 0.5]},
+        }})
+        self.assertEqual(bounded.maximum, big)
+        self.assertEqual(choice.choices, (big, 0.5))
 
     def test_x_score_is_rejected_in_favor_of_number_enum(self):
         with self.assertRaisesRegex(SchemaError, "x-score.*number enum"):
@@ -710,6 +748,65 @@ class JsonSchemaExecutionTests(unittest.TestCase):
             client.last_prompt,
         )
         self.assertIn("<assistant>-0.75<eom>", client.last_prompt)
+
+    def test_open_number_never_enters_a_dead_end_at_the_digit_limit(self):
+        client = TypeLLMClient(numeric_max_digits=2)
+        fake = FakeSGLang([ord("1"), ord("2"), 3])
+        client.sglang = fake
+
+        result = client.generate(context="context", questions={"n": {"type": "number"}})
+
+        self.assertEqual(result, {"n": 12.0})
+        self.assertIn(ord("."), fake.candidate_sets[1])
+        self.assertEqual(fake.candidate_sets[2], [3])
+
+    def test_text_prompt_keeps_non_ascii_field_names_readable(self):
+        [compiled] = TypeLLMClient().compile_schema(
+            {"type": "object", "properties": {"名称": {"type": "string"}}}
+        )
+        self.assertIn('Text(name="名称")', compiled.opening_text())
+
+    def test_candidate_logprobs_match_shapes_recorded_from_a_real_server(self):
+        from typellm import extract_candidate_logprobs
+        # Recorded from SGLang 0.5.19 (/generate with token_ids_logprob=[32, 33, 34]).
+        meta = {"output_token_ids_logprobs": [
+            [[-13.3175, 32, "A"], [-14.4113, 33, "B"], [-14.2238, 34, "C"]]
+        ]}
+        self.assertEqual(
+            extract_candidate_logprobs({"text": "1", "meta_info": meta}, [34, 32]),
+            {34: -14.2238, 32: -13.3175},
+        )
+        # A server that computes no logprobs answers with an empty list.
+        for empty in ([], [None], None):
+            response = {"text": "1", "meta_info": {"output_token_ids_logprobs": empty}}
+            with self.assertRaisesRegex(SGLangError, "not found for every requested"):
+                extract_candidate_logprobs(response, [32])
+
+    def test_labels_are_tokenized_without_special_tokens(self):
+        from unittest.mock import Mock
+        client = SGLangClient(model="model")
+        client._request = Mock(side_effect=[{"tokens": [32]}, {"text": "A"}])
+        self.assertEqual(client.single_token("A"), (32, "A"))
+        path, payload = client._request.call_args_list[0].args
+        self.assertEqual(path, "/v1/tokenize")
+        self.assertIs(payload["add_special_tokens"], False)
+
+    def test_read_timeout_is_reported_as_sglang_error(self):
+        from unittest.mock import patch
+        with patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
+            with self.assertRaisesRegex(SGLangError, "timed out"):
+                SGLangClient()._request("/generate", {"text": "x"})
+
+    def test_info_endpoints_use_current_sglang_names(self):
+        from unittest.mock import Mock
+        client = SGLangClient()
+        client._request = Mock(side_effect=[{"served_model_name": "model"}, {"context_length": 4096}])
+        self.assertEqual(client._tokenizer_model(), "model")
+        self.assertEqual(client._context_length(), 4096)
+        self.assertEqual(
+            [call.args[0] for call in client._request.call_args_list],
+            ["/model_info", "/server_info"],
+        )
 
     def test_open_numeric_batch_preserves_schema_order(self):
         schema = {
