@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "typellm"
+version = "0.1.0"
+description = "Type-Safe Decoding for Autoregressive LLMs"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = [
+    "jinja2>=3.1",
+    "tokenizers>=0.23",
+    "transformers>=5.0",
+]
+
+[project.urls]
+Homepage = "https://typellm.ai/"
+Repository = "https://github.com/TypeLLM/TypeLLM"
+
+[project.scripts]
+typellm = "typellm_cli:main"
+
+[tool.setuptools]
+py-modules = [
+    "typellm",
+    "typellm_benchmark",
+    "typellm_cli",
+    "typellm_numeric",
+    "typellm_runtime",
+    "typellm_schema",
+    "typellm_sglang",
+]
