@@ -15,6 +15,7 @@ from .schema import (
     MAX_ENUM_CHOICES,
     SchemaError,
     compile_json_schema,
+    dependency_layers,
 )
 from .sglang import SGLangClient
 
@@ -36,6 +37,7 @@ class Choice:
     text_type: bool = False
     max_length: int | None = None
     return_probabilities: bool = False
+    depends_on: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         if not self.choices and self.numeric_type is None and not self.text_type:
@@ -111,7 +113,7 @@ class TypeLLMClient:
         model: str | None = None,
         *,
         mode: str = "argmax",
-        execution: str = "sequential",
+        execution: str = "auto",
         temperature: float = 1.0,
         seed: int | None = None,
         timeout: float = 120.0,
@@ -192,6 +194,7 @@ class TypeLLMClient:
                     text_type=item.text_type,
                     max_length=item.max_length,
                     return_probabilities=item.return_probabilities,
+                    depends_on=item.depends_on,
                 )
                 for item in decisions
             ]
@@ -209,6 +212,8 @@ class TypeLLMClient:
         for index, prop in enumerate(properties):
             if not isinstance(prop, Mapping):
                 raise SchemaError(f"properties[{index}] must be a mapping")
+            if "depends_on" in prop:
+                raise SchemaError("depends_on requires questions or object-form schema.properties")
             name = prop.get("name")
             for old_key in ("question", "x-question"):
                 if old_key in prop:
@@ -300,7 +305,18 @@ class TypeLLMClient:
         _validate_decoding(active_mode, active_temperature)
         _validate_execution(active_execution)
         decisions = self.compile_schema(schema)
-        if active_execution == "sequential":
+        has_dependencies = any(d.depends_on is not None for d in decisions)
+        if active_execution == "auto":
+            active_execution = "dag" if has_dependencies else "batch"
+        if has_dependencies and active_execution != "dag":
+            raise SchemaError("depends_on requires execution='auto' or 'dag'")
+        if active_execution == "dag":
+            rows, self.last_prompts = _execute_dependency_decisions(
+                self.sglang, context, decisions, active_mode,
+                active_temperature, self.rng, self.numeric_max_digits,
+            )
+            self.last_prompt = None
+        elif active_execution == "sequential":
             rows, self.last_prompt = _execute_decisions(
                 self.sglang,
                 context,
@@ -380,8 +396,8 @@ def _validate_decoding(mode: str, temperature: float) -> None:
 
 
 def _validate_execution(execution: str) -> None:
-    if execution not in {"sequential", "batch"}:
-        raise ValueError("execution must be 'sequential' or 'batch'")
+    if execution not in {"auto", "sequential", "batch", "dag"}:
+        raise ValueError("execution must be 'auto', 'sequential', 'batch', or 'dag'")
 
 
 def _numeric_candidates(
@@ -673,6 +689,42 @@ def _execute_decisions(
     return results, prefix
 
 
+def _execute_dependency_decisions(
+    client, context, decisions, mode, temperature, rng, numeric_max_digits,
+):
+    rows_by_name = {}
+    prompts_by_name = {}
+    ancestors = {}
+    for layer in dependency_layers(decisions):
+        dependency_values = {}
+        parent_prefixes = {}
+        for decision in layer:
+            visible = set(decision.depends_on or ())
+            for name in decision.depends_on or ():
+                visible.update(ancestors[name])
+            ancestors[decision.name] = visible
+            parents = decision.depends_on or ()
+            if parents:
+                # Longest serialized prefix is a deterministic heuristic; KV
+                # from distinct branches cannot be concatenated.
+                parent = max(parents, key=lambda name: len(prompts_by_name[name]))
+                parent_prefixes[decision.name] = prompts_by_name[parent]
+            dependency_values[decision.name] = {
+                d.name: rows_by_name[d.name]["value"]
+                for d in decisions if d.name in visible
+            }
+        rows, prompts = _execute_batch_decisions(
+            client, context, layer, mode, temperature, rng, numeric_max_digits,
+            dependency_values=dependency_values,
+            parent_prefixes=parent_prefixes,
+        )
+        for decision, row, prompt in zip(layer, rows, prompts):
+            rows_by_name[decision.name] = row
+            prompts_by_name[decision.name] = prompt
+    return ([rows_by_name[d.name] for d in decisions],
+            [prompts_by_name[d.name] for d in decisions])
+
+
 def _execute_batch_decisions(
     client: SGLangClient,
     context: str,
@@ -681,7 +733,26 @@ def _execute_batch_decisions(
     temperature: float,
     rng: random.Random,
     numeric_max_digits: int = 32,
+    dependency_values: Mapping[str, Mapping[str, Any]] | None = None,
+    parent_prefixes: Mapping[str, str] | None = None,
 ) -> tuple[list[dict], list[str]]:
+    def question_content(decision):
+        content = decision.opening_text()
+        values = (dependency_values or {}).get(decision.name, {})
+        if values:
+            content = "Dependency results (JSON):\n" + json.dumps(values, ensure_ascii=False) + "\n\n" + content
+        return content
+
+    incremental = parent_prefixes is not None
+
+    def complete(prompt, messages, answer):
+        if incremental:
+            return client.complete_chat_prefix(prompt, answer)
+        return client.render_chat(
+            messages + [{"role": "assistant", "content": answer}],
+            add_generation_prompt=False,
+        )
+
     shared_messages = [{"role": "user", "content": context.rstrip()}]
     shared_prefix = client.render_chat(
         shared_messages, add_generation_prompt=False
@@ -690,14 +761,26 @@ def _execute_batch_decisions(
     candidate_ids: list[list[int]] = []
     prompts: list[str] = []
 
+    # Warm each distinct parent once before siblings, including thinking/text
+    # requests. Root context is warmed only in the first DAG layer.
+    if incremental:
+        prefixes = list(dict.fromkeys(parent_prefixes.values()))
+        if any(d.name not in parent_prefixes for d in decisions):
+            prefixes.insert(0, shared_prefix)
+        for prefix in prefixes:
+            client.cache_prefix(prefix)
+
     finite_indexes: list[int] = []
     open_results: dict[int, tuple[dict, str]] = {}
     text_pending = []
     for index, decision in enumerate(decisions):
         messages = shared_messages + [
-            {"role": "user", "content": decision.opening_text()}
+            {"role": "user", "content": question_content(decision)}
         ]
-        prompt = client.render_chat(messages, add_generation_prompt=True)
+        parent = (parent_prefixes or {}).get(decision.name)
+        prompt = (client.extend_chat_prefix(parent, question_content(decision))
+                  if parent is not None else
+                  client.render_chat(messages, add_generation_prompt=True))
         if decision.text_type:
             text_pending.append((index, decision, prompt, messages))
             continue
@@ -719,11 +802,7 @@ def _execute_batch_decisions(
                     "value": value,
                     "probabilities": None,
                 },
-                client.render_chat(
-                    messages
-                    + [{"role": "assistant", "content": generated_text}],
-                    add_generation_prompt=False,
-                ),
+                complete(prompt, messages, generated_text),
             )
             continue
         label_tokens = {
@@ -751,15 +830,16 @@ def _execute_batch_decisions(
             seed=rng.randrange(2**31),
         )
         for (index, decision, prompt, messages), value in zip(text_pending, values):
-            completed = client.render_chat(messages + [{"role": "assistant", "content": json.dumps(value, ensure_ascii=False)}], add_generation_prompt=False)
+            completed = complete(prompt, messages, json.dumps(value, ensure_ascii=False))
             open_results[index] = ({"name": decision.name, "question": decision.question,
                                        "label": None, "value": value, "probabilities": None}, completed)
 
     # Warm the exact common prefix once, then let SGLang fork the cached state
     # across the K batched prompts. TypeLLM never reads or moves KV tensors.
     if prompts:
-        cache_meta = client.cache_prefix(shared_prefix)
-        LOG.info("batch_shared_prefix_cached_tokens=%s", cache_meta.get("cached_tokens"))
+        if not incremental:
+            cache_meta = client.cache_prefix(shared_prefix)
+            LOG.info("batch_shared_prefix_cached_tokens=%s", cache_meta.get("cached_tokens"))
         scored, elapsed = client.score_candidates_batch(prompts, candidate_ids)
     else:
         scored, elapsed = [], 0.0
@@ -785,11 +865,10 @@ def _execute_batch_decisions(
         selected_text = label_tokens[selected][1]
         semantic_value = decision.choices[selected]
         completed_prompts.append(
-            client.render_chat(
-                shared_messages
-                + [{"role": "user", "content": decision.opening_text()}]
-                + [{"role": "assistant", "content": selected_text}],
-                add_generation_prompt=False,
+            complete(
+                prompts[finite_index],
+                shared_messages + [{"role": "user", "content": question_content(decision)}],
+                selected_text,
             )
         )
         LOG.info("batch_decision=%d raw_candidate_logprobs=%s", index, raw)
@@ -893,7 +972,7 @@ def run_schema(
     *,
     state: str | None = None,
     questions: Mapping[str, Any] | None = None,
-    execution: str = "sequential",
+    execution: str = "auto",
     base_url: str | None = None,
     model: str | None = None,
     seed: int | None = None,

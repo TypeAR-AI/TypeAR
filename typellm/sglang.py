@@ -176,6 +176,7 @@ class SGLangClient:
         messages: Sequence[Mapping[str, str]],
         *,
         add_generation_prompt: bool,
+        finish_thinking: bool = True,
     ) -> str:
         """Render history; optionally finish thinking before constrained decoding."""
         tokenizer = self._get_chat_tokenizer()
@@ -200,11 +201,41 @@ class SGLangClient:
         bos = getattr(tokenizer, "bos_token", None)
         if bos and rendered.startswith(bos) and tokenizer.encode("x")[0] == tokenizer.bos_token_id:
             rendered = rendered[len(bos):]
-        # A template that leaves <think> open makes the model reason whatever
-        # the flag says; let it finish rather than score inside the block.
-        if add_generation_prompt and (self.thinking or rendered.rstrip().endswith("<think>")):
+        if add_generation_prompt and finish_thinking and (self.thinking or rendered.rstrip().endswith("<think>")):
             return self._finish_thinking(rendered)
         return rendered
+
+    def _continuation_parts(self, question: str | None = None) -> tuple[str, str]:
+        # Derive turn delimiters from the actual tokenizer, never hardcode a
+        # model's chat tokens. The marker is confined to this local template probe.
+        marker = "TYPELLM_ASSISTANT_BOUNDARY_8b46c9"
+        messages = [{"role": "user", "content": "Context"},
+                    {"role": "assistant", "content": marker}]
+        closed = self.render_chat(messages, add_generation_prompt=False)
+        if closed.count(marker) != 1:
+            raise SGLangError("Chat template cannot preserve assistant content for KV continuation")
+        closing = closed.split(marker)[1]
+        if question is None:
+            return closing, ""
+        extended = self.render_chat(
+            messages + [{"role": "user", "content": question}],
+            add_generation_prompt=True, finish_thinking=False,
+        )
+        if extended.count(marker) != 1:
+            raise SGLangError("Chat template cannot preserve assistant content for KV continuation")
+        tail = extended.split(marker)[1]
+        if not tail.startswith(closing):
+            raise SGLangError("Chat template does not support append-only KV continuation")
+        return closing, tail[len(closing):]
+
+    def complete_chat_prefix(self, prompt: str, answer: str) -> str:
+        closing, _ = self._continuation_parts()
+        return prompt + answer + closing
+
+    def extend_chat_prefix(self, prefix: str, question: str) -> str:
+        _, suffix = self._continuation_parts(question)
+        prompt = prefix + suffix
+        return self._finish_thinking(prompt) if self.thinking or prompt.rstrip().endswith("<think>") else prompt
 
     def _context_length(self) -> int:
         """Read the served context window, including any server override."""

@@ -314,17 +314,17 @@ class JsonSchemaCompilerTests(unittest.TestCase):
                 }
             )
 
-    def test_enum_is_limited_to_sixteen_values(self):
+    def test_enum_is_limited_to_twenty_four_values(self):
         schema = {
             "type": "object",
             "properties": {
-                "value": {"type": "integer", "enum": list(range(16))}
+                "value": {"type": "integer", "enum": list(range(24))}
             },
         }
         [decision] = compile_json_schema(schema)
-        self.assertEqual(len(decision.choices), 16)
-        schema["properties"]["value"]["enum"].append(16)
-        with self.assertRaisesRegex(SchemaError, "maximum is 16"):
+        self.assertEqual(len(decision.choices), 24)
+        schema["properties"]["value"]["enum"].append(24)
+        with self.assertRaisesRegex(SchemaError, "maximum is 24"):
             compile_json_schema(schema)
 
     def test_property_order_is_decision_order(self):
@@ -620,13 +620,13 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 tokenizer.encode = lambda text, encoded=encoded: encoded
                 self.assertEqual(client.render_chat([], add_generation_prompt=True), expected)
 
-    def test_manual_choice_is_limited_to_sixteen_values(self):
+    def test_manual_choice_is_limited_to_twenty_four_values(self):
         from typellm import Choice
 
-        with self.assertRaisesRegex(ValueError, "maximum is 16"):
+        with self.assertRaisesRegex(ValueError, "maximum is 24"):
             Choice(
                 question="Too many?",
-                choices={str(index): index for index in range(17)},
+                choices={str(index): index for index in range(25)},
             )
 
     def test_eleven_value_number_enum_uses_a_through_k(self):
@@ -679,7 +679,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
             },
             "required": ["scale", "enabled"],
         }
-        client = TypeLLMClient()
+        client = TypeLLMClient(execution="sequential")
         fake = FakeSGLang([ord("B"), ord("A")])
         client.sglang = fake
 
@@ -702,7 +702,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 "enabled": {"type": "boolean"},
             },
         }
-        client = TypeLLMClient()
+        client = TypeLLMClient(execution="sequential")
         fake = FakeSGLang([ord("4"), ord("2"), 3, ord("A")])
         client.sglang = fake
 
@@ -730,7 +730,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 }
             },
         }
-        client = TypeLLMClient()
+        client = TypeLLMClient(execution="sequential")
         fake = FakeSGLang(
             [9001, 3],
             numeric_pieces=[
@@ -752,7 +752,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
             "type": "object",
             "properties": {"temperature": {"type": "number"}},
         }
-        client = TypeLLMClient()
+        client = TypeLLMClient(execution="sequential")
         fake = FakeSGLang(
             [ord("-"), ord("0"), ord("."), ord("7"), ord("5"), 3]
         )

@@ -53,7 +53,7 @@ def main() -> None:
     )
     parser.add_argument("--mode", choices=("argmax", "sample"), default="argmax")
     parser.add_argument(
-        "--execution", choices=("sequential", "batch"), default="sequential"
+        "--execution", choices=("auto", "sequential", "batch", "dag"), default="auto"
     )
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--numeric-max-digits", type=int, default=32)

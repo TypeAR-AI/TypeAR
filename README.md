@@ -19,6 +19,9 @@
 
 ### Updates
 
+- **[2026/09/22]** Added `depends_on` dependency-graph execution with incremental
+  parent-prefix reuse.
+
 - **[2026/09/19]** Added optional [thinking mode](#thinking-mode) with
   `thinking=True/False` and a configurable per-field thinking budget, followed
   by type-safe constrained decoding. Thinking is off by default.
@@ -42,10 +45,23 @@ without `enum` generate values token by token. See [schemas and examples](#outpu
 
 ### Features
 
+### Supported output types
+
+- **Text** — Free text (`string`).
+- **Integer** — Whole numbers (`integer`).
+- **Number** — Numeric values (`number`).
+- **Boolean** — `true` or `false`.
+- **Enum choice** — One of your allowed string or numeric values.
+
+Enum and boolean fields select from finite candidates; numeric and text fields
+without `enum` generate values token by token. See [schemas and examples](#output-types).
+
+### Features
+
 1. **No out-of-schema hallucinations** — Choices stay within the allowed values.
 2. **Negligible output-token cost** — Single-token categorical selection and bounded numeric decoding; optional thinking adds tokens.
 3. **Linear input computation cost** — Prefix caching avoids reprocessing shared context.
-4. **Batch or sequential execution** — Run independent decisions together or condition on earlier results.
+4. **Dependency-aware execution** — Run decisions sequentially, batch independent fields, or declare `depends_on` to form a dependency graph.
 5. **Made for open autoregressive LLMs** — Use compatible models you already serve with SGLang.
 6. **Supports thinking mode** — Enable reasoning before the final constrained answer.
 
@@ -132,9 +148,10 @@ print(result)
 The existing `schema=` JSON Schema interface is also supported; pass only one.
 `state=` is an alias for `context=`; pass only one of them.
 
-Python dictionary insertion order determines the decision order. Each later
-field is conditioned on the original context and the values selected for all
-earlier fields.
+Without `depends_on`, fields run independently in batch by default. With
+`depends_on`, dependencies determine execution order. Returned keys follow
+Python dictionary insertion order in either mode. To condition each field on
+all earlier results, explicitly set `execution="sequential"`.
 
 ## Thinking mode
 
@@ -184,7 +201,9 @@ TypeLLM supports finite decisions, numeric fields, and free text:
 | Boolean | `{"type": "boolean"}` | `bool` |
 | Enum choice | `{"type": "string", "enum": ["meal", "travel"]}` | Candidate type: `str`, `int`, or `float` |
 
-Enum choices support `string`, `integer`, and `number` types, with at most 16 values. The declared `type` validates the candidate values.
+Enum choices support `string`, `integer`, and `number` types, with at most 24 values. The declared `type` validates the candidate values.
+The tokenizer must provide enough distinct single-token control labels; the
+default pool uses A–Z and 0–9, with 24 candidates normally mapped to A–X.
 
 Generation works in three ways:
 
@@ -250,9 +269,13 @@ If `instructions` is omitted, TypeLLM uses `description` or an instruction
 generated from the field name. Rename old `question` / `x-question` fields
 to `instructions`.
 
-## Sequential and batch execution
+## Dependency-aware execution
 
-Sequential execution is the default:
+The default `execution="auto"` uses batch execution when no field declares
+`depends_on`, and dependency execution otherwise. You can also set the mode on
+the client or pass it to `run_schema`.
+
+To use sequential execution, set `execution="sequential"`. It works as follows:
 
 Questions can express a complete decision workflow. For example, incident
 triage might select, in order:
@@ -279,7 +302,8 @@ result = client.generate(
 ```
 
 Batch execution prefills the shared context once, then forks it into one branch
-per field. Each branch appends only its own question and generates one token.
+per field. Each branch appends only its own question. Enum and Boolean fields select one
+token; open numeric and text fields can generate multiple tokens.
 The completed branch prompts are available as `client.last_prompts`.
 
 Use `sequential` when later decisions depend on earlier values. Use `batch`
@@ -287,12 +311,100 @@ only when every field may be decided independently from the shared context.
 For actual concurrent execution, configure the SGLang server with
 `--max-running-requests` at least as large as the desired number of branches.
 
+### Dependency execution (`depends_on`)
+
+Declare which earlier results a field needs. Forward references are allowed:
+fields do not need to be declared in execution order.
+
+```python
+result = client.generate(
+    context="The payments service is returning errors after a deployment.",
+    questions={
+        "system": {
+            "type": "string",
+            "enum": ["payments", "accounts", "search"],
+            "instructions": "Which system is affected?",
+        },
+        "severity": {
+            "type": "string",
+            "enum": ["low", "medium", "high"],
+            "instructions": "Assess severity for the affected system.",
+            "depends_on": ["system"],
+        },
+        "deployment_related": {
+            "type": "boolean",
+            "instructions": "Is the incident related to a deployment?",
+            "depends_on": ["system"],
+        },
+        "rollback": {
+            "type": "boolean",
+            "instructions": "Based on the incident assessments, should we roll back?",
+            "depends_on": ["severity", "deployment_related"],
+        },
+    },
+)
+```
+
+This runs `system`, then `severity` and `deployment_related` in one layer,
+then `rollback`. Each layer finishes before the next starts. Enum/Boolean fields
+use native batch scoring; text fields use batched text generation. Open numeric
+fields currently decode individually within the layer.
+
+- `depends_on` is a list of unique field names. Missing or empty lists denote
+  independent roots once dependency execution is active.
+- Each field sees the original context and its direct/transitive dependencies.
+  It inherits one parent branch's conversation, including that branch's thinking
+  when enabled, and receives dependency values as JSON. Unrelated branches are
+  excluded. Probability-returning dependencies contribute their selected value,
+  not their probability distribution.
+- Unknown names, self-dependencies, duplicate dependencies, and cycles raise
+  `SchemaError` before tokenizer binding or inference.
+- Any explicit `depends_on`, including `[]`, activates dependency execution in
+  `auto` mode. Use `execution="dag"` to request it explicitly; with no edges,
+  all fields are independent roots.
+- Explicit `execution="sequential"` or `"batch"` with `depends_on` raises
+  `SchemaError`, so dependency declarations are never silently ignored.
+- Both `questions=` and object-form `schema.properties` support this TypeLLM
+  extension. The legacy list-form schema does not support it.
+- Results and `client.last_prompts` follow field declaration order;
+  `client.last_prompt` is `None`. `print_final_prompt=True` prints each completed
+  branch prompt.
+
+Dependencies specify ordering and visible results. They do not substitute values
+into instructions, change candidate enums, or conditionally skip fields. All
+fields execute; a failed layer propagates the error without starting later layers.
+
+### Incremental prefix reuse along dependencies
+
+Dependency execution preserves each selected parent branch's completed prompt
+verbatim and appends the next user turn. For a chain `A → B → C`, the prompt for
+`B` starts with the completed prompt for `A`, and `C` extends `B`. Siblings fork
+from the same parent prefix. Chat turn delimiters come from the model's tokenizer
+template; unsupported append-only templates raise `SGLangError`.
+
+At a join, TypeLLM selects the direct parent with the longest serialized prompt
+(character count; ties follow `depends_on` order). It extends that prefix and
+includes dependency values as JSON. KV tensors from different branches are not
+merged. This is a deterministic reuse heuristic, not a token-optimal planner.
+
+Before each layer, each distinct selected parent prefix is warmed once; the
+original context is warmed for the root layer. This also prefills the chosen
+answer and turn terminator if the earlier request did not cache them. Text values
+are reserialized as JSON, so their answer suffix may need fresh prefill. Thinking
+content already present in the chosen prefix is retained rather than rerendered.
+
+SGLang owns the KV cache. Actual reuse depends on token-prefix matches, cache
+configuration, token/page boundaries, and eviction. Local regression tests check
+exact string-prefix preservation and branch isolation; GPU cache-hit rates and
+latency for this dependency path have not yet been measured. Thinking requests
+and open numeric decoding still execute individually within a layer.
+
 ### Batch performance
 
 Batch execution supports any number of independent fields, subject to the
 SGLang server's concurrency and memory limits. The shared context is prefilled
 once, and every field becomes a branch containing only its own question and
-one-token answer.
+answer (one token for enum/Boolean fields).
 
 As one illustrative measurement, a local run used Qwen3.8-27B NVFP4 on one
 NVIDIA RTX PRO 6000 Blackwell GPU, a roughly 1,100-token shared context, and

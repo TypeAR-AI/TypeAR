@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Mapping, Sequence
 
 
-MAX_ENUM_CHOICES = 16
+MAX_ENUM_CHOICES = 24
 
 
 class SchemaError(ValueError):
@@ -28,6 +28,7 @@ class Decision:
     text_type: bool = False
     max_length: int | None = None
     return_probabilities: bool = False
+    depends_on: tuple[str, ...] | None = None
 
 
 def _has_duplicates(values: Sequence[Any]) -> bool:
@@ -192,4 +193,40 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
             Decision(name, question, tuple(values), syntax, return_probabilities=return_probabilities)
         )
 
-    return decisions
+    compiled = []
+    for decision in decisions:
+        field = properties[decision.name]
+        dependencies = field.get("depends_on")
+        if "depends_on" in field:
+            if not isinstance(dependencies, list) or any(
+                not isinstance(name, str) or not name for name in dependencies
+            ):
+                raise SchemaError(f"depends_on for {decision.name!r} must be a list of field names")
+            if len(set(dependencies)) != len(dependencies):
+                raise SchemaError(f"depends_on for {decision.name!r} contains duplicates")
+            dependencies = tuple(dependencies)
+        compiled.append(replace(decision, depends_on=dependencies))
+    dependency_layers(compiled)
+    return compiled
+
+
+def dependency_layers(decisions: Sequence) -> list[list]:
+    """Stable topological layers, validated before any model requests."""
+    names = {decision.name for decision in decisions}
+    for decision in decisions:
+        for dependency in decision.depends_on or ():
+            if dependency not in names:
+                raise SchemaError(f"unknown dependency {dependency!r} for {decision.name!r}")
+            if dependency == decision.name:
+                raise SchemaError(f"field {decision.name!r} cannot depend on itself")
+    remaining = list(decisions)
+    completed = set()
+    layers = []
+    while remaining:
+        layer = [d for d in remaining if set(d.depends_on or ()) <= completed]
+        if not layer:
+            raise SchemaError(f"dependency cycle among fields: {[d.name for d in remaining]!r}")
+        layers.append(layer)
+        completed.update(d.name for d in layer)
+        remaining = [d for d in remaining if d.name not in completed]
+    return layers

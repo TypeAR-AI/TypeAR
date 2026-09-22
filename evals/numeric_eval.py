@@ -170,7 +170,7 @@ def main():
         error = None
         result = None
         try:
-            result = client.generate(context=case["context"], schema=schema_for(case))
+            result = client.generate(context=case["context"], schema=schema_for(case), execution="sequential")
             correct = matches(result["answer"], case["expected"])
             if "followup" in case:
                 correct = correct and result["is_positive"] == case["followup"]["expected"]
