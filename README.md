@@ -7,6 +7,7 @@
 <h4 align="center">
   <a href="https://typellm.ai/">Homepage</a>&nbsp; • &nbsp;
   <a href="https://typellm.ai/blog/introducing-typellm">Blog</a>&nbsp; • &nbsp;
+  <a href="https://typellm.ai/docs">Docs</a>&nbsp; • &nbsp;
   <a href="https://typellm.ai/early-access">Early Access</a>&nbsp; • &nbsp;
   <a href="https://typellm.ai/contact">Contact</a>&nbsp;
 </h4>
