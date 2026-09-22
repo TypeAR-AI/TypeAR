@@ -9,6 +9,7 @@
 <h4 align="center">
   <a href="https://typellm.ai/">Homepage</a>&nbsp; • &nbsp;
   <a href="https://typellm.ai/blog/introducing-typellm">Blog</a>&nbsp; • &nbsp;
+  <a href="https://typellm.ai/early-access">Early Access</a>&nbsp; • &nbsp;
   <a href="https://typellm.ai/contact">Contact</a>&nbsp;
 </h4>
 </div>
@@ -32,18 +33,7 @@
 
 TypeLLM extends autoregressive LLMs with type-safe generation. Models can still think and generate freely when needed, while producing guaranteed typed outputs when structure matters. Define the output with a JSON Schema, and TypeLLM returns values your software can use directly.
 
-### Supported output types
-
-- **Text** — Free text (`string`).
-- **Integer** — Whole numbers (`integer`).
-- **Number** — Numeric values (`number`).
-- **Boolean** — `true` or `false`.
-- **Enum choice** — One of your allowed string or numeric values.
-
-Enum and boolean fields select from finite candidates; numeric and text fields
-without `enum` generate values token by token. See [schemas and examples](#output-types).
-
-### Features
+TypeLLM was inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), while pursuing a different goal: extending autoregressive LLMs with typed outputs and richer interaction patterns without changing their architecture or weights. It keeps the models’ original generation and reasoning capabilities while adding multiple output types. TypeLLM is built on [SGLang](https://github.com/sgl-project/sglang) and works with existing open models.
 
 ### Supported output types
 
@@ -574,6 +564,5 @@ Models without a compatible standard tokenizer remain unsupported.
 | Built-in field dependency graph | ✓ | — | — | — | — |
 | KV prefix reuse | Shared context + dependency paths | Not disclosed | Shared context | Not documented | Not applicable |
 
-## Acknowledgements
-
-TypeLLM was inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), while pursuing a different goal: extending autoregressive LLMs with typed outputs and richer interaction patterns without changing their architecture or weights. It builds on their existing generation and reasoning capabilities, adding multiple output types, batch and sequential execution, and dependency-driven interactions. Thanks to the [SGLang](https://github.com/sgl-project/sglang) team for the inference infrastructure, and to the open-model community for making these models available to build on.
+---
+© 2026 TypeLLM
