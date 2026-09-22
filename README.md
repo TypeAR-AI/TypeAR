@@ -67,30 +67,11 @@ to start it with prefix caching enabled.
 
 See [Supported models](#supported-models) for tested checkpoints and thinking behavior.
 
-Serve the chosen checkpoint with SGLang and use the same model ID in the client:
-
-```python
-from typellm import TypeLLMClient
-
-client = TypeLLMClient(
-    "http://127.0.0.1:30000",
-    model="Qwen/Qwen3.8-27B",  # See the Supported models section.
-)
-```
-
-Install the lightweight client-side tokenizer dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Or simply:
-
-```bash
-pip install typellm
-```
-
 ### 2. Run TypeLLM
+
+```bash
+pip install -U typellm
+```
 
 Point `TypeLLMClient` at the SGLang server's HTTP endpoint:
 
@@ -101,14 +82,26 @@ client = TypeLLMClient(
     "http://127.0.0.1:30000",
     model="Qwen/Qwen3.8-27B",
 )
+```
 
+Example request:
+
+```python
 result = client.generate(
     context="""
     Receipt from Hilton London
-    Total: £324
+    Total: £324.50
     Employee travelled to London for a client meeting.
     """,
     questions={
+        "merchant": {
+            "type": "string",
+            "instructions": "Return only the merchant name.",
+        },
+        "total": {
+            "type": "number",
+            "instructions": "Extract the total amount in GBP.",
+        },
         "expense_type": {
             "type": "string",
             "enum": ["meal", "travel", "equipment"],
@@ -127,61 +120,19 @@ result = client.generate(
 )
 
 print(result)
-# {
-#     "expense_type": "travel",
-#     "reimbursable": True,
-#     "confidence": 0.75,
-# }
 ```
 
-`questions` maps output field names to their definitions. Every field is answered.
-The existing `schema=` JSON Schema interface is also supported; pass only one.
-`state=` is an alias for `context=`; pass only one of them.
-
-Without `depends_on`, fields run independently in batch by default. With
-`depends_on`, dependencies determine execution order. Returned keys follow
-Python dictionary insertion order in either mode. To condition each field on
-all earlier results, explicitly set `execution="sequential"`.
-
-## Thinking mode
-
-Thinking is off by default. Enable it when constructing the client:
+Example return:
 
 ```python
-client = TypeLLMClient(
-    "http://127.0.0.1:30000",
-    model="Qwen/Qwen3.8-27B",
-    thinking=True,          # False disables thinking (the default)
-)
-result = client.generate(context=context, questions=questions)
+{
+    "merchant": "Hilton London",
+    "total": 324.5,
+    "expense_type": "travel",
+    "reimbursable": True,
+    "confidence": 0.75,
+}
 ```
-
-No thinking-token budget is set by default. Optionally pass `thinking_budget=2048`
-to cap reasoning per field. TypeLLM reserves context space for the final answer;
-if thinking reaches its length limit, it keeps the partial reasoning, closes the
-thinking block, and proceeds with constrained decoding. The same recovery applies
-when nonempty reasoning ends at a recognized native EOS/turn terminator before
-the thinking-close marker: TypeLLM removes the trailing terminator if present,
-closes the thinking block, and continues typed decoding without rerunning parents.
-Forced closure is logged at INFO level; it does not guarantee answer accuracy.
-Empty unfinished reasoning, unknown stops, and server/network errors still fail.
-
-Models whose chat template always opens a `<think>` block reason before every
-field even with `thinking=False`; `thinking_budget` still caps it.
-
-## Testing
-
-To run the 128-case numeric regression, first serve `Qwen/Qwen3.8-27B` with SGLang
-at `http://127.0.0.1:30000`, then run:
-
-```bash
-python3 evals/numeric_eval.py
-```
-
-The evaluation covers integer and number extraction, arithmetic, negative
-integers, and sequential dependencies. Its deterministic test cases are stored
-in `evals/numeric_eval_cases.jsonl`; the script writes detailed results to
-`evals/numeric_eval_formal_results.jsonl` and prints an aggregate summary.
 
 ## Output types
 
@@ -262,6 +213,32 @@ Use `instructions` to tell the model what decision to make:
 If `instructions` is omitted, TypeLLM uses `description` or an instruction
 generated from the field name. Rename old `question` / `x-question` fields
 to `instructions`.
+
+## Thinking mode
+
+Thinking is off by default. Enable it when constructing the client:
+
+```python
+client = TypeLLMClient(
+    "http://127.0.0.1:30000",
+    model="Qwen/Qwen3.8-27B",
+    thinking=True,          # False disables thinking (the default)
+)
+result = client.generate(context=context, questions=questions)
+```
+
+No thinking-token budget is set by default. Optionally pass `thinking_budget=2048`
+to cap reasoning per field. TypeLLM reserves context space for the final answer;
+if thinking reaches its length limit, it keeps the partial reasoning, closes the
+thinking block, and proceeds with constrained decoding. The same recovery applies
+when nonempty reasoning ends at a recognized native EOS/turn terminator before
+the thinking-close marker: TypeLLM removes the trailing terminator if present,
+closes the thinking block, and continues typed decoding without rerunning parents.
+Forced closure is logged at INFO level; it does not guarantee answer accuracy.
+Empty unfinished reasoning, unknown stops, and server/network errors still fail.
+
+Models whose chat template always opens a `<think>` block reason before every
+field even with `thinking=False`; `thinking_budget` still caps it.
 
 ## Dependency-aware execution
 
