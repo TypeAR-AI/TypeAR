@@ -560,7 +560,7 @@ Hugging Face ID or local tokenizer directory as `tokenizer=`. The loader uses
 standard tokenizer artifacts without executing custom model code.
 Models without a compatible standard tokenizer remain unsupported.
 
-## Feature comparison
+## Comparison with Jev-style models
 
 | Feature | TypeLLM | [Jev](https://docs.typesafe.ai/introduction) | [openjev-sglang](https://github.com/ekzhang/openjev-sglang) | [system-one-open](https://github.com/mithalouni/system-one-open) | [OpenJev DeBERTa](https://huggingface.co/com-kotobalabs/open-jev-deberta-v3-large) |
 | --- | --- | --- | --- | --- | --- |
@@ -576,4 +576,4 @@ Models without a compatible standard tokenizer remain unsupported.
 
 ## Acknowledgements
 
-TypeLLM was inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), which made the case that software needs decisions rather than strings to parse. Jev addresses this with a purpose-built model; TypeLLM brings typed decisions to the open models you already run. Thanks to the [SGLang](https://github.com/sgl-project/sglang) team for the inference infrastructure, and to the open-model community for making these models available to build on.
+TypeLLM was inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), while pursuing a different goal: extending autoregressive LLMs with typed outputs and richer interaction patterns without changing their architecture or weights. It builds on their existing generation and reasoning capabilities, adding multiple output types, batch and sequential execution, and dependency-driven interactions. Thanks to the [SGLang](https://github.com/sgl-project/sglang) team for the inference infrastructure, and to the open-model community for making these models available to build on.
