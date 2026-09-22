@@ -1,5 +1,3 @@
-
-
 <div align="center">
 
 <img width="1500" alt="typellm-banner" src="https://github.com/user-attachments/assets/b1f2dbc6-21b7-4222-a0fb-dacfe1650797" />
@@ -14,20 +12,11 @@
 </h4>
 </div>
 
-
-
-
-
 ### Updates
 
-- **[2026/09/22]** Added `depends_on` dependency-graph execution with incremental
-  parent-prefix reuse.
-
-- **[2026/09/19]** Added optional [thinking mode](#thinking-mode) with
-  `thinking=True/False` and a configurable per-field thinking budget, followed
-  by type-safe constrained decoding. Thinking is off by default.
-- [2026/09/18] Added integer and float outputs through tokenizer-native
-  constrained decoding for JSON Schema `integer` and `number` fields.
+- **[2026/09/22]** Added `depends_on` dependency graphs with incremental prefix reuse.
+- **[2026/09/19]** Added optional [thinking mode](#thinking-mode) with a per-field budget.
+- **[2026/09/18]** Added constrained `integer` and `number` outputs.
 
 ## Introduction
 
@@ -37,20 +26,13 @@ TypeLLM was inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing
 
 ### Supported output types
 
-- **Text** — Free text (`string`).
-- **Integer** — Whole numbers (`integer`).
-- **Number** — Numeric values (`number`).
-- **Boolean** — `true` or `false`.
-- **Enum choice** — One of your allowed string or numeric values.
-
-Enum and boolean fields select from finite candidates; numeric and text fields
-without `enum` generate values token by token. See [schemas and examples](#output-types).
+**String · Integer · Number · Boolean · Enum choice** — See [schemas and examples](#output-types).
 
 ### Features
 
 1. **No out-of-schema hallucinations** — Choices stay within the allowed values.
 2. **Negligible output-token cost** — Single-token categorical selection and bounded numeric decoding; optional thinking adds tokens.
-3. **Linear input computation cost** — Prefix caching avoids reprocessing shared context.
+3. **Shared-prefix reuse** — KV caching avoids reprocessing shared context.
 4. **Dependency-aware execution** — Run decisions sequentially, batch independent fields, or declare `depends_on` to form a dependency graph.
 5. **Made for open autoregressive LLMs** — Use compatible models you already serve with SGLang.
 6. **Supports thinking mode** — Enable reasoning before the final constrained answer.
@@ -148,11 +130,8 @@ TypeLLM supports finite decisions, numeric fields, and free text:
 
 Enum choices support `string`, `integer`, and `number` types, with at most 24 values. The declared `type` validates the candidate values.
 
-Generation works in three ways:
-
-- **Choice** — Selects from finite candidates for enum and boolean fields.
-- **Numeric** — Generates integers or numbers without `enum` token by token under numeric constraints.
-- **Text** — Generates a JSON string for strings without `enum`, then decodes it to `str`.
+Enum and boolean fields select a single-token label. Numeric and text fields
+without `enum` generate values token by token.
 
 A string without `enum` generates free text:
 
@@ -165,15 +144,10 @@ result = client.generate(
 )
 ```
 
-`maxLength` is optional: add `"maxLength": 100` to limit Unicode character count.
-Omitting it adds no character limit. Set `TypeLLMClient(text_max_tokens=512)` to
-control the separate per-field generation budget (default 512 tokens).
+Use `"maxLength": 100` to limit text to 100 Unicode characters. The separate
+`text_max_tokens` client setting defaults to 512 tokens per field.
 Incomplete, invalid, or over-length text raises `SGLangError`.
-Sequential fields can use earlier text; batch text fields generate independently.
-Text generation uses
-multiple tokens; type safety does not guarantee factual accuracy. Text fields
-currently support `maxLength`, but not `minLength`, `pattern`, or `format`.
-
+`minLength`, `pattern`, and `format` are not supported.
 
 For example, ask for a numeric answer without enumerating every possible value:
 
@@ -209,8 +183,7 @@ Use `instructions` to tell the model what decision to make:
 ```
 
 If `instructions` is omitted, TypeLLM uses `description` or an instruction
-generated from the field name. Rename old `question` / `x-question` fields
-to `instructions`.
+generated from the field name.
 
 ## Thinking mode
 
@@ -220,65 +193,42 @@ Thinking is off by default. Enable it when constructing the client:
 client = TypeLLMClient(
     "http://127.0.0.1:30000",
     model="Qwen/Qwen3.8-27B",
-    thinking=True,          # False disables thinking (the default)
+    thinking=True,
 )
 result = client.generate(context=context, questions=questions)
 ```
 
-No thinking-token budget is set by default. Optionally pass `thinking_budget=2048`
-to cap reasoning per field. TypeLLM reserves context space for the final answer;
-if thinking reaches its length limit, it keeps the partial reasoning, closes the
-thinking block, and proceeds with constrained decoding. The same recovery applies
-when nonempty reasoning ends at a recognized native EOS/turn terminator before
-the thinking-close marker: TypeLLM removes the trailing terminator if present,
-closes the thinking block, and continues typed decoding without rerunning parents.
-Forced closure is logged at INFO level; it does not guarantee answer accuracy.
-Empty unfinished reasoning, unknown stops, and server/network errors still fail.
+Set `thinking_budget=2048` to cap reasoning per field; no explicit budget is set
+by default. If reasoning reaches its limit or ends early at a recognized turn
+terminator, TypeLLM closes a nonempty thinking block and proceeds to the typed
+answer. Empty unfinished reasoning and unrecognized stops raise an error.
 
-Models whose chat template always opens a `<think>` block reason before every
-field even with `thinking=False`; `thinking_budget` still caps it.
+Models with always-on thinking still reason with `thinking=False`;
+`thinking_budget` applies to them too. See [Supported models](#supported-models).
 
 ## Dependency-aware execution
 
-The default `execution="auto"` uses batch execution when no field declares
-`depends_on`, and dependency execution otherwise. You can also set the mode on
-the client or pass it to `run_schema`.
+The default `execution="auto"` selects batch execution unless a field declares
+`depends_on`.
 
-To use sequential execution, set `execution="sequential"`. It works as follows:
+| Mode | Field context | Execution order |
+| --- | --- | --- |
+| `batch` | Original context only | Independent fields run together |
+| `sequential` | Original context and all earlier answers | Field declaration order |
+| `dag` | Original context and dependency results | Dependency order |
 
-Questions can express a complete decision workflow. For example, incident
-triage might select, in order:
-
-1. the affected system;
-2. the severity, conditioned on that system;
-3. whether to roll back, conditioned on both earlier decisions;
-4. a confidence score.
-
-Each field becomes a new user turn, and the assistant directly emits its
-single-token label or constrained numeric value. The completed turn is appended
-before the next question, so later decisions see the complete decision history.
-The final accumulated prompt is available as `client.last_prompt`, or can be
-printed with `print_final_prompt=True`.
-
-When the fields are independent, run them as one native SGLang batch:
+Set the mode per request or on the client:
 
 ```python
 result = client.generate(
     context=context,
     questions=questions,
-    execution="batch",
+    execution="sequential",  # Or "batch" for independent fields
 )
 ```
 
-Batch execution prefills the shared context once, then forks it into one branch
-per field. Each branch appends only its own question. Enum and Boolean fields select one
-token; open numeric and text fields can generate multiple tokens.
-The completed branch prompts are available as `client.last_prompts`.
-
-Use `sequential` when later decisions depend on earlier values. Use `batch`
-only when every field may be decided independently from the shared context.
-For actual concurrent execution, configure the SGLang server with
-`--max-running-requests` at least as large as the desired number of branches.
+Batch execution shares the cached context across branches. Configure SGLang's
+`--max-running-requests` for the desired concurrency.
 
 ### Dependency execution (`depends_on`)
 
@@ -314,71 +264,35 @@ result = client.generate(
 )
 ```
 
-This runs `system`, then `severity` and `deployment_related` in one layer,
-then `rollback`. Each layer finishes before the next starts. Enum/Boolean fields
-use native batch scoring; text fields use batched text generation. Open numeric
-fields currently decode individually within the layer.
+This runs `system`, then `severity` and `deployment_related`, then `rollback`.
+Each layer finishes before the next starts; unrelated branches remain separate.
 
-- `depends_on` is a list of unique field names. Missing or empty lists denote
-  independent roots once dependency execution is active.
-- Each field sees the original context and its direct/transitive dependencies.
-  It inherits one parent branch's conversation and receives dependency values as
-  JSON. Parent thinking is retained only when the model protocol permits it. Unrelated branches are
-  excluded. Probability-returning dependencies contribute their selected value,
-  not their probability distribution.
-- Unknown names, self-dependencies, duplicate dependencies, and cycles raise
-  `SchemaError` before tokenizer binding or inference.
-- Any explicit `depends_on`, including `[]`, activates dependency execution in
-  `auto` mode. Use `execution="dag"` to request it explicitly; with no edges,
-  all fields are independent roots.
-- Explicit `execution="sequential"` or `"batch"` with `depends_on` raises
-  `SchemaError`, so dependency declarations are never silently ignored.
-- Both `questions=` and object-form `schema.properties` support this TypeLLM
-  extension. The legacy list-form schema does not support it.
-- Results and `client.last_prompts` follow field declaration order;
-  `client.last_prompt` is `None`. `print_final_prompt=True` prints each completed
-  branch prompt.
+- `depends_on` lists unique field names. Missing or empty lists mark independent roots.
+- Fields receive their direct and transitive dependency results. Probability-returning
+  dependencies contribute only their selected value.
+- Unknown names, self-dependencies, duplicates, and cycles raise `SchemaError`.
+- Any `depends_on`, including `[]`, activates DAG execution in `auto` mode.
+  Combining it with explicit `batch` or `sequential` raises `SchemaError`.
+- Both `questions` and object-form `schema.properties` support dependencies.
+  Returned keys follow field declaration order.
 
-Dependencies specify ordering and visible results. They do not substitute values
-into instructions, change candidate enums, or conditionally skip fields. All
-fields execute; a failed layer propagates the error without starting later layers.
+All fields execute. Dependencies do not change enums, substitute values into
+instructions, or conditionally skip fields. A failed layer stops subsequent layers.
 
 ### Incremental prefix reuse along dependencies
 
-Dependency execution appends the next user turn to the selected parent's
-history. The completed prompt, including thinking, is preserved verbatim.
-For a chain `A → B → C`, the prompt for
-`B` starts with the completed prompt for `A`, and `C` extends `B`. Siblings fork
-from the same parent prefix. Chat turn delimiters come from the model's tokenizer
-template; unsupported append-only templates raise `SGLangError`.
+TypeLLM extends parent prompts along dependency paths, retaining previous answers
+and reasoning for KV cache reuse. In a chain `A → B → C`, each step builds on the
+previous prefix; independent branches share their common prefix.
 
-At a join, TypeLLM selects the direct parent with the longest serialized prompt
-(character count; ties follow `depends_on` order). It extends that prefix and
-includes dependency values as JSON. KV tensors from different branches are not
-merged. This is a deterministic reuse heuristic, not a token-optimal planner.
-
-Before each layer, each distinct selected parent prefix is warmed once; the
-original context is warmed for the root layer. This also prefills the chosen
-answer and turn terminator if the earlier request did not cache them. Text values
-are reserialized as JSON, so their answer suffix may need fresh prefill. Thinking
-content already present in the chosen prefix is retained.
-
-SGLang owns the KV cache. Actual reuse depends on token-prefix matches, cache
-configuration, token/page boundaries, and eviction. Local regression tests check
-exact string-prefix preservation and branch isolation; GPU cache-hit rates and
-latency for this dependency path have not yet been measured. Thinking requests
-and open numeric decoding still execute individually within a layer.
+When a field depends on multiple parents, TypeLLM reuses one parent prefix and
+includes all dependency results. SGLang manages the cache; KV tensors from
+different branches are not merged.
 
 ### Batch performance
 
-Batch execution supports any number of independent fields, subject to the
-SGLang server's concurrency and memory limits. The shared context is prefilled
-once, and every field becomes a branch containing only its own question and
-answer (one token for enum/Boolean fields).
-
-As one illustrative measurement, a local run used Qwen3.8-27B NVFP4 on one
-NVIDIA RTX PRO 6000 Blackwell GPU, a roughly 1,100-token shared context, and
-`K=16` one-token Boolean decisions. SGLang was configured with
+A local run with Qwen3.8-27B NVFP4 on one NVIDIA RTX PRO 6000 Blackwell GPU used
+roughly 1,100 context tokens and 16 Boolean fields, with
 `--max-running-requests 16`.
 
 | Execution | End-to-end latency | Latency per decision | Relative throughput |
@@ -386,15 +300,9 @@ NVIDIA RTX PRO 6000 Blackwell GPU, a roughly 1,100-token shared context, and
 | Sequential | 9.35 s | 0.584 s | 1.0x |
 | Batch | 1.61 s | 0.101 s | 5.8x |
 
-In this run, every branch reused 1,088 cached tokens, for 17,408 reused token
-positions in total. This is a single example of the general batch method, not
-a fixed-width design or a portable hardware benchmark. Latency depends on
-`K`, the model, questions, context length, GPU, and server configuration.
-
-The two modes intentionally compute different conditionals. Sequential mode
-includes all earlier selected values in every later prompt. Batch mode gives
-each branch only the common context and its own question, which enables
-parallelism but removes cross-decision dependencies.
+Each branch reused 1,088 cached tokens. Results depend on the model, workload,
+and server configuration. Sequential fields see earlier answers; batch fields
+are independent, so the modes serve different workflows.
 
 ## Probabilities and sampling
 
@@ -458,36 +366,22 @@ result = run_schema(
 
 ## Cost analysis
 
-**Closed decisions generate one token per field, and prefix reuse makes the
-newly processed input grow approximately linearly with the unique context
-added across the workflow.** An open number requires one constrained step per
-generated tokenizer token. The long original context is normally prefilled once
-rather than recomputed for every decision.
+Enum and boolean fields use one output token each. Numeric, text, and optional
+thinking outputs use multiple tokens.
 
-For `D` decisions, an original context of `C` tokens, and roughly `S` newly
-appended tokens per decision:
+For a sequential workflow with `D` fields, `C` original context tokens, and
+roughly `S` new tokens per turn, input prefill counts are:
 
 ```text
 without prefix reuse: O(D*C + D^2*S)
 with prefix reuse:    O(C + D*S)
-output generation:    O(D + N)
 ```
 
-Here `N` is the total number of generated tokenizer tokens in open numeric
-fields, including their end-of-message tokens, and is zero for a fully finite
-schema.
-
-For `K` independent closed batch decisions with question lengths
-`Q_1, ..., Q_K`, the corresponding prefill count is approximately
-`C + sum(Q_k)`, followed by one batched decode step that produces `K` output
-tokens. Open numeric fields require additional constrained token steps.
-
-These are prefill token-position counts, not exact GPU FLOPs. New tokens still
-attend to the cached prefix, and real latency also depends on cache alignment,
-context length, batching, memory bandwidth, and cache eviction.
-
-This describes self-hosted compute. A hosted provider may still bill the full
-submitted input unless it offers cached-input pricing.
+For independent batch fields, the shared context is prefilled once, followed by
+each field's question. These counts describe input token positions, not GPU
+compute or latency: new tokens still attend to the cached prefix, and reuse
+depends on cache availability. Hosted billing depends on the provider's
+cached-input pricing.
 
 ## Supported models
 
@@ -507,23 +401,9 @@ Other sizes in the Qwen3.5 and Qwen3.8 families are expected to be compatible.
 The MiniCPM5, Ling and Ring runs used an RTX PRO 6000 Blackwell and
 SGLang 0.5.19 on 2026-09-22.
 
-### Protocol compatibility
-
-Use the same client API with a compatible SGLang server:
-
-```python
-client = TypeLLMClient(
-    "http://127.0.0.1:30000",
-    model="openbmb/MiniCPM5-1B",
-    thinking=True,
-    thinking_budget=512,
-)
-```
-
-If the server's tokenizer path is not available on the client, pass its matching
-Hugging Face ID or local tokenizer directory as `tokenizer=`. The loader uses
-standard tokenizer artifacts without executing custom model code.
-Models without a compatible standard tokenizer remain unsupported.
+Use the checkpoint ID as `model=`. If the server's tokenizer path is unavailable
+locally, set `tokenizer=` to its matching Hugging Face ID or local directory.
+The tokenizer must load from standard artifacts without custom model code.
 
 ## Comparison with Jev-style models
 
