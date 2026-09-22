@@ -11,4 +11,5 @@ dist/
 outputs/
 checkpoints/
 wandb/
+_vizdoom.ini
 
