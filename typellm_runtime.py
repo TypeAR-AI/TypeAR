@@ -307,7 +307,7 @@ class TypeLLMClient:
         decisions = self.compile_schema(schema)
         has_dependencies = any(d.depends_on is not None for d in decisions)
         if active_execution == "auto":
-            active_execution = "dag" if has_dependencies else "sequential"
+            active_execution = "dag" if has_dependencies else "batch"
         if has_dependencies and active_execution != "dag":
             raise SchemaError("depends_on requires execution='auto' or 'dag'")
         if active_execution == "dag":

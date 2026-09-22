@@ -623,7 +623,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
             },
             "required": ["scale", "enabled"],
         }
-        client = TypeLLMClient()
+        client = TypeLLMClient(execution="sequential")
         fake = FakeSGLang([ord("B"), ord("A")])
         client.sglang = fake
 
@@ -646,7 +646,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 "enabled": {"type": "boolean"},
             },
         }
-        client = TypeLLMClient()
+        client = TypeLLMClient(execution="sequential")
         fake = FakeSGLang([ord("4"), ord("2"), 3, ord("A")])
         client.sglang = fake
 
@@ -674,7 +674,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 }
             },
         }
-        client = TypeLLMClient()
+        client = TypeLLMClient(execution="sequential")
         fake = FakeSGLang(
             [9001, 3],
             numeric_pieces=[
@@ -696,7 +696,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
             "type": "object",
             "properties": {"temperature": {"type": "number"}},
         }
-        client = TypeLLMClient()
+        client = TypeLLMClient(execution="sequential")
         fake = FakeSGLang(
             [ord("-"), ord("0"), ord("."), ord("7"), ord("5"), 3]
         )

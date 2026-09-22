@@ -141,8 +141,8 @@ class DependencyTests(unittest.TestCase):
         self.assertTrue(client.last_prompts[1].startswith(client.last_prompts[0]))
         self.assertIn('"text": "hello \\"世界\\""', client.sglang.batch_prompts[0][0])
 
-    def test_default_stays_sequential_and_explicit_dag_batches_roots(self):
-        for mode, batch in [('auto', False), ('dag', True)]:
+    def test_auto_batches_roots_and_explicit_sequential_is_preserved(self):
+        for mode, batch in [(None, True), ('auto', True), ('dag', True), ('sequential', False)]:
             client = self.client()
             client.generate(context='', questions={'a': {'type': 'boolean'}, 'b': {'type': 'boolean'}}, execution=mode)
             self.assertEqual(bool(client.sglang.batch_prompts), batch)

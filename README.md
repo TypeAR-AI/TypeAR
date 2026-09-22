@@ -116,10 +116,10 @@ print(result)
 The existing `schema=` JSON Schema interface is also supported; pass only one.
 `state=` is an alias for `context=`; pass only one of them.
 
-Without `depends_on`, Python dictionary insertion order determines the default
-decision order. Each later field is conditioned on the original context and the
-values selected for all earlier fields. With `depends_on`, dependencies determine
-execution order; returned keys still follow declaration order.
+Without `depends_on`, fields run independently in batch by default. With
+`depends_on`, dependencies determine execution order. Returned keys follow
+Python dictionary insertion order in either mode. To condition each field on
+all earlier results, explicitly set `execution="sequential"`.
 
 ## Thinking mode
 
@@ -230,11 +230,11 @@ to `instructions`.
 
 ## Dependency-aware execution
 
-The default `execution="auto"` uses sequential execution when no field declares
+The default `execution="auto"` uses batch execution when no field declares
 `depends_on`, and dependency execution otherwise. You can also set the mode on
 the client or pass it to `run_schema`.
 
-Without dependencies, sequential execution works as follows:
+To use sequential execution, set `execution="sequential"`. It works as follows:
 
 Questions can express a complete decision workflow. For example, incident
 triage might select, in order:
