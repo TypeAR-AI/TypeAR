@@ -276,17 +276,17 @@ class JsonSchemaCompilerTests(unittest.TestCase):
                 }
             )
 
-    def test_enum_is_limited_to_sixteen_values(self):
+    def test_enum_is_limited_to_twenty_four_values(self):
         schema = {
             "type": "object",
             "properties": {
-                "value": {"type": "integer", "enum": list(range(16))}
+                "value": {"type": "integer", "enum": list(range(24))}
             },
         }
         [decision] = compile_json_schema(schema)
-        self.assertEqual(len(decision.choices), 16)
-        schema["properties"]["value"]["enum"].append(16)
-        with self.assertRaisesRegex(SchemaError, "maximum is 16"):
+        self.assertEqual(len(decision.choices), 24)
+        schema["properties"]["value"]["enum"].append(24)
+        with self.assertRaisesRegex(SchemaError, "maximum is 24"):
             compile_json_schema(schema)
 
     def test_property_order_is_decision_order(self):
@@ -564,13 +564,13 @@ class JsonSchemaExecutionTests(unittest.TestCase):
             client.end_of_message_token(), (248046, "<|im_end|>")
         )
 
-    def test_manual_choice_is_limited_to_sixteen_values(self):
+    def test_manual_choice_is_limited_to_twenty_four_values(self):
         from typellm import Choice
 
-        with self.assertRaisesRegex(ValueError, "maximum is 16"):
+        with self.assertRaisesRegex(ValueError, "maximum is 24"):
             Choice(
                 question="Too many?",
-                choices={str(index): index for index in range(17)},
+                choices={str(index): index for index in range(25)},
             )
 
     def test_eleven_value_number_enum_uses_a_through_k(self):
