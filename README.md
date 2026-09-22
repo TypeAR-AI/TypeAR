@@ -35,9 +35,9 @@ without `enum` generate values token by token. See [schemas and examples](#outpu
 1. **No out-of-schema hallucinations** — Choices stay within the allowed values.
 2. **Negligible output-token cost** — Single-token categorical selection and bounded numeric decoding; optional thinking adds tokens.
 3. **Linear input computation cost** — Prefix caching avoids reprocessing shared context.
-4. **Batch or sequential execution** — Run independent decisions together or condition on earlier results.
-5. **Made for open autoregressive LLMs** — Use compatible models you already serve with SGLang.
-6. **Supports thinking mode** — Enable reasoning before the final constrained answer.
+4. **Dependency-aware execution** — Run decisions sequentially, batch independent fields, or declare `depends_on` to form a dependency graph.
+6. **Made for open autoregressive LLMs** — Use compatible models you already serve with SGLang.
+7. **Supports thinking mode** — Enable reasoning before the final constrained answer.
 
 ## Quick start
 
@@ -228,7 +228,7 @@ If `instructions` is omitted, TypeLLM uses `description` or an instruction
 generated from the field name. Rename old `question` / `x-question` fields
 to `instructions`.
 
-## Sequential and batch execution
+## Dependency-aware execution
 
 The default `execution="auto"` uses sequential execution when no field declares
 `depends_on`, and dependency execution otherwise. You can also set the mode on
