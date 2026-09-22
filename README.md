@@ -75,7 +75,7 @@ Qwen3.8-27B; follow the
 [Qwen3.8-27B SGLang deployment guide](https://lmsysorg.mintlify.app/cookbook/autoregressive/Qwen/Qwen3.8-27B)
 to start it with prefix caching enabled.
 
-**Qwen3.5-4B and Qwen3.5-9B are also supported and GPU-tested, including thinking mode.**
+See [Supported models](#supported-models) for tested checkpoints and thinking behavior.
 
 Serve the chosen checkpoint with SGLang and use the same model ID in the client:
 
@@ -84,7 +84,7 @@ from typellm import TypeLLMClient
 
 client = TypeLLMClient(
     "http://127.0.0.1:30000",
-    model="Qwen/Qwen3.8-27B",  # or "Qwen/Qwen3.5-4B", "Qwen/Qwen3.5-9B"
+    model="Qwen/Qwen3.8-27B",  # See the Supported models section.
 )
 ```
 
@@ -169,8 +169,12 @@ result = client.generate(context=context, questions=questions)
 No thinking-token budget is set by default. Optionally pass `thinking_budget=2048`
 to cap reasoning per field. TypeLLM reserves context space for the final answer;
 if thinking reaches its length limit, it keeps the partial reasoning, closes the
-thinking block, and proceeds with constrained decoding. Server and network errors
-still propagate.
+thinking block, and proceeds with constrained decoding. The same recovery applies
+when nonempty reasoning ends at a recognized native EOS/turn terminator before
+the thinking-close marker: TypeLLM removes the trailing terminator if present,
+closes the thinking block, and continues typed decoding without rerunning parents.
+Forced closure is logged at INFO level; it does not guarantee answer accuracy.
+Empty unfinished reasoning, unknown stops, and server/network errors still fail.
 
 Models whose chat template always opens a `<think>` block reason before every
 field even with `thinking=False`; `thinking_budget` still caps it.
@@ -353,8 +357,8 @@ fields currently decode individually within the layer.
 - `depends_on` is a list of unique field names. Missing or empty lists denote
   independent roots once dependency execution is active.
 - Each field sees the original context and its direct/transitive dependencies.
-  It inherits one parent branch's conversation, including that branch's thinking
-  when enabled, and receives dependency values as JSON. Unrelated branches are
+  It inherits one parent branch's conversation and receives dependency values as
+  JSON. Parent thinking is retained only when the model protocol permits it. Unrelated branches are
   excluded. Probability-returning dependencies contribute their selected value,
   not their probability distribution.
 - Unknown names, self-dependencies, duplicate dependencies, and cycles raise
@@ -376,8 +380,9 @@ fields execute; a failed layer propagates the error without starting later layer
 
 ### Incremental prefix reuse along dependencies
 
-Dependency execution preserves each selected parent branch's completed prompt
-verbatim and appends the next user turn. For a chain `A → B → C`, the prompt for
+Dependency execution appends the next user turn to the selected parent's
+history. The completed prompt, including thinking, is preserved verbatim.
+For a chain `A → B → C`, the prompt for
 `B` starts with the completed prompt for `A`, and `C` extends `B`. Siblings fork
 from the same parent prefix. Chat turn delimiters come from the model's tokenizer
 template; unsupported append-only templates raise `SGLangError`.
@@ -391,7 +396,7 @@ Before each layer, each distinct selected parent prefix is warmed once; the
 original context is warmed for the root layer. This also prefills the chosen
 answer and turn terminator if the earlier request did not cache them. Text values
 are reserialized as JSON, so their answer suffix may need fresh prefill. Thinking
-content already present in the chosen prefix is retained rather than rerendered.
+content already present in the chosen prefix is retained.
 
 SGLang owns the KV cache. Actual reuse depends on token-prefix matches, cache
 configuration, token/page boundaries, and eviction. Local regression tests check
@@ -519,6 +524,56 @@ context length, batching, memory bandwidth, and cache eviction.
 This describes self-hosted compute. A hosted provider may still bill the full
 submitted input unless it offers cached-input pricing.
 
-## License
+## Supported models
 
-[Apache License 2.0](LICENSE).
+The following models have been tested with TypeLLM on a live SGLang GPU
+server.
+
+| Model / checkpoint | Thinking support |
+| --- | --- |
+| `Qwen/Qwen3.8-27B` | On / off |
+| `Qwen/Qwen3.5-0.8B/4B/9B` | On / off |
+| `openbmb/MiniCPM5-1B` | On / off |
+| `inclusionAI/Ling-mini-2.0` | Off only |
+| `inclusionAI/Ring-mini-2.0` | Always on |
+
+Other sizes in the Qwen3.5 and Qwen3.8 families are expected to be compatible.
+
+The MiniCPM5, Ling and Ring runs used an RTX PRO 6000 Blackwell and
+SGLang 0.5.19 on 2026-09-22.
+
+### Protocol compatibility
+
+Use the same client API with a compatible SGLang server:
+
+```python
+client = TypeLLMClient(
+    "http://127.0.0.1:30000",
+    model="openbmb/MiniCPM5-1B",
+    thinking=True,
+    thinking_budget=512,
+)
+```
+
+If the server's tokenizer path is not available on the client, pass its matching
+Hugging Face ID or local tokenizer directory as `tokenizer=`. The loader uses
+standard tokenizer artifacts without executing custom model code.
+Models without a compatible standard tokenizer remain unsupported.
+
+## Feature comparison
+
+| Feature | TypeLLM | [Jev](https://docs.typesafe.ai/introduction) | [openjev-sglang](https://github.com/ekzhang/openjev-sglang) | [system-one-open](https://github.com/mithalouni/system-one-open) | [OpenJev DeBERTa](https://huggingface.co/com-kotobalabs/open-jev-deberta-v3-large) |
+| --- | --- | --- | --- | --- | --- |
+| Enum selection | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Boolean decisions | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Rubric scoring | Numeric enum; no dedicated Score API | Score | Score | Score | Score |
+| integer/decimal type | ✓ | — | — | — | — |
+| string type | ✓ | — | — | — | — |
+| Enable Thinking | ✓ | — | — | — | — |
+| Multi-field execution | Batch, sequential, DAG | Batch | Batch | Batch | Batch |
+| Built-in field dependency graph | ✓ | — | — | — | — |
+| KV prefix reuse | Shared context + dependency paths | Not disclosed | Shared context | Not documented | Not applicable |
+
+## Acknowledgements
+
+TypeLLM was inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), which made the case that software needs decisions rather than strings to parse. Jev addresses this with a purpose-built model; TypeLLM brings typed decisions to the open models you already run. Thanks to the [SGLang](https://github.com/sgl-project/sglang) team for the inference infrastructure, and to the open-model community for making these models available to build on.

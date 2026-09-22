@@ -1,0 +1,1 @@
+["-m","sglang.launch_server","--model-path","openbmb/MiniCPM5-1B","--host","127.0.0.1","--port","30001","--trust-remote-code","--context-length","8192","--mem-fraction-static","0.75","--max-running-requests","8"]

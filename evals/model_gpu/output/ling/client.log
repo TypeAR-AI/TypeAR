@@ -1,0 +1,25 @@
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[transformers] You are using a model of type `bailing_moe` to instantiate a model of type ``. This may be expected if you are loading a checkpoint that shares a subset of the architecture (e.g., loading a `sam2_video` checkpoint into `Sam2Model`), but is otherwise not supported and can yield errors. Please verify that the checkpoint is compatible with the model you are instantiating.
+{"model": "inclusionAI/Ling-mini-2.0", "case": "enum", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.04}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "boolean", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.019}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "numeric_enum", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.082}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "integer", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.053}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "negative", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.049}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "number", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.082}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "text", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.248}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "bounded_text", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.037}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "mixed", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.091}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "enum", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.034}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "boolean", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.033}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "numeric_enum", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.033}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "integer", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.049}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "negative", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.049}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "number", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.082}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "text", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.02}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "bounded_text", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.022}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "mixed", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 0.096}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "dag_diamond", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "isolation": true, "prefix_checks": [{"parent": "right", "child": "final", "preserved": true}, {"parent": "root", "child": "left", "preserved": true}, {"parent": "root", "child": "right", "preserved": true}], "seconds": 0.112}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "dag_mixed", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "prefix_checks": [{"parent": "number", "child": "text", "preserved": true}, {"parent": "text", "child": "check", "preserved": true}], "seconds": 0.144}
+{"model": "inclusionAI/Ling-mini-2.0", "case": "dag_enum24", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "prefix_checks": [{"parent": "pick", "child": "check", "preserved": true}], "seconds": 0.088}
+{"model": "inclusionAI/Ling-mini-2.0", "total": 21, "completed": 21, "type_valid": 21, "correct": 19}

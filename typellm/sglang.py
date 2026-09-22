@@ -12,6 +12,7 @@ import urllib.request
 from typing import Any, Mapping, Sequence
 
 from .numeric import load_numeric_token_table
+from .protocol import detect_protocol
 
 
 class SGLangError(RuntimeError):
@@ -160,9 +161,10 @@ class SGLangClient:
                     "Chat-template rendering requires transformers; install it "
                     "with `pip install transformers`"
                 ) from exc
+            source = self._tokenizer_source()
             try:
                 self._chat_tokenizer = AutoTokenizer.from_pretrained(
-                    self._tokenizer_source()
+                    source, trust_remote_code=False,
                 )
             except Exception as exc:
                 raise SGLangError(
@@ -183,6 +185,10 @@ class SGLangClient:
         if not getattr(tokenizer, "chat_template", None):
             raise SGLangError("The served tokenizer does not define a chat template")
         try:
+            detect_protocol(tokenizer)
+        except ValueError as exc:
+            raise SGLangError(str(exc)) from exc
+        try:
             rendered = tokenizer.apply_chat_template(
                 list(messages),
                 tokenize=False,
@@ -201,9 +207,15 @@ class SGLangClient:
         bos = getattr(tokenizer, "bos_token", None)
         if bos and rendered.startswith(bos) and tokenizer.encode("x")[0] == tokenizer.bos_token_id:
             rendered = rendered[len(bos):]
-        if add_generation_prompt and finish_thinking and (self.thinking or rendered.rstrip().endswith("<think>")):
-            return self._finish_thinking(rendered)
+        if add_generation_prompt and finish_thinking:
+            return self._prepare_answer_prefix(rendered)
         return rendered
+
+    def _prepare_answer_prefix(self, prefix: str) -> str:
+        protocol = detect_protocol(self._get_chat_tokenizer())
+        if self.thinking or protocol.has_open_thinking(prefix):
+            return self._finish_thinking(prefix)
+        return prefix
 
     def _continuation_parts(self, question: str | None = None) -> tuple[str, str]:
         # Derive turn delimiters from the actual tokenizer, never hardcode a
@@ -235,7 +247,7 @@ class SGLangClient:
     def extend_chat_prefix(self, prefix: str, question: str) -> str:
         _, suffix = self._continuation_parts(question)
         prompt = prefix + suffix
-        return self._finish_thinking(prompt) if self.thinking or prompt.rstrip().endswith("<think>") else prompt
+        return self._prepare_answer_prefix(prompt)
 
     def _context_length(self) -> int:
         """Read the served context window, including any server override."""
@@ -262,14 +274,14 @@ class SGLangClient:
         return self._context_length_cache
 
     def _finish_thinking(self, prefix: str) -> str:
-        # Support native templates that leave the assistant inside <think>.
-        # Reject incompatible templates rather than silently scoring reasoning.
-        if not prefix.rstrip().endswith("<think>"):
-            raise SGLangError(
-                "thinking=True requires a native chat template ending in an open <think> block"
-            )
         tokenizer = self._get_chat_tokenizer()
-        forced_end = "\n\nI will now give the final answer.\n</think>\n\n"
+        protocol = detect_protocol(tokenizer)
+        if not protocol.has_open_thinking(prefix):
+            raise SGLangError(
+                f"thinking=True requires a native chat template ending in an open "
+                f"{protocol.thinking_open} block; this template may not support thinking"
+            )
+        forced_end = protocol.forced_close()
         prefix_tokens = len(tokenizer.encode(prefix, add_special_tokens=False))
         closing_tokens = len(tokenizer.encode(forced_end, add_special_tokens=False))
         # This is available context, not an independent default thinking budget.
@@ -282,7 +294,7 @@ class SGLangClient:
             "sampling_params": {
                 "max_new_tokens": limit,
                 "temperature": 0.6, "top_p": 0.95, "top_k": 20,
-                "stop": ["</think>"], "no_stop_trim": True,
+                "stop": [protocol.thinking_close], "no_stop_trim": True,
             },
         })
         text = response.get("text") if isinstance(response, Mapping) else None
@@ -292,25 +304,51 @@ class SGLangClient:
         finish = meta.get("finish_reason", {}) if isinstance(meta, Mapping) else {}
         if isinstance(finish, Mapping) and finish.get("type") in {"abort", "error"}:
             raise SGLangError("Thinking was aborted; no typed result returned")
-        if "</think>" not in text:
-            if not isinstance(finish, Mapping) or finish.get("type") != "length" or not text.strip():
-                raise SGLangError("Thinking ended without a closing </think> marker; no typed result returned")
-            completed = prefix + text + forced_end
+        if protocol.thinking_close not in text:
+            stop_kind = finish.get("type") if isinstance(finish, Mapping) else None
+            ended_turn = False
+            if stop_kind == "stop":
+                matched = finish.get("matched")
+                # Only recover a recognized native EOS/turn end, not an
+                # arbitrary stop or an unreported/truncated server response.
+                endings = {protocol.turn_end, getattr(tokenizer, "eos_token", None)} - {None, ""}
+                for ending in endings:
+                    ids = tokenizer.encode(ending, add_special_tokens=False)
+                    if matched == ending or (type(matched) is int and ids == [matched]):
+                        ended_turn = True
+                        # Some servers preserve the token, others filter it.
+                        # Remove only its trailing occurrence, never user text.
+                        trimmed = text.rstrip()
+                        if trimmed.endswith(ending):
+                            text = trimmed[:-len(ending)]
+                        break
+            if (stop_kind != "length" and not ended_turn) or not text.strip():
+                raise SGLangError(f"Thinking ended without a closing {protocol.thinking_close} marker; no typed result returned")
+            completed = protocol.answer_prefix(prefix, text + "\n\nI will now give the final answer.\n")
             # Guard tokenizer/count mismatches before issuing a final request.
             if len(tokenizer.encode(completed, add_special_tokens=False)) + self.answer_reserve_tokens > self._context_length():
                 raise SGLangError("Thinking response exceeded the reserved context space")
-            logging.getLogger("typellm").info("Thinking length limit reached; closing reasoning before constrained decoding")
+            logging.getLogger("typellm").info(
+                "Thinking %s; closing reasoning before constrained decoding",
+                "ended at native turn terminator" if ended_turn else "length limit reached",
+            )
             return completed
-        reasoning = text.split("</think>", 1)[0]
+        reasoning = text.split(protocol.thinking_close, 1)[0]
         if not reasoning.strip():
             raise SGLangError("Thinking returned an empty block; no typed result returned")
         # Discard any unconstrained answer after the marker. The existing
         # runtime records only selected labels/numbers in subsequent history.
-        return prefix + reasoning + "</think>\n\n"
+        return protocol.answer_prefix(prefix, reasoning)
 
     def end_of_message_token(self) -> tuple[int, str]:
         """Return the tokenizer's single native end-of-message token."""
         tokenizer = self._get_chat_tokenizer()
+        turn_end = detect_protocol(tokenizer).turn_end
+        if turn_end is not None:
+            token_ids = tokenizer.encode(turn_end, add_special_tokens=False)
+            if len(token_ids) != 1 or tokenizer.decode(token_ids, skip_special_tokens=False) != turn_end:
+                raise SGLangError(f"Chat turn terminator {turn_end!r} must be one exact token")
+            return int(token_ids[0]), turn_end
         token_id = getattr(tokenizer, "eos_token_id", None)
         token_text = getattr(tokenizer, "eos_token", None)
         if not isinstance(token_id, int) or not isinstance(token_text, str):

@@ -1,0 +1,45 @@
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+{"model": "google/gemma-4-E2B-it", "case": "enum", "thinking": false, "execution": "sequential", "type_valid": true, "correct": false, "seconds": 0.074}
+{"model": "google/gemma-4-E2B-it", "case": "boolean", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.021}
+{"model": "google/gemma-4-E2B-it", "case": "numeric_enum", "thinking": false, "execution": "sequential", "type_valid": true, "correct": false, "seconds": 0.021}
+{"model": "google/gemma-4-E2B-it", "case": "integer", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.06}
+{"model": "google/gemma-4-E2B-it", "case": "negative", "thinking": false, "execution": "sequential", "type_valid": true, "correct": false, "seconds": 0.648}
+{"model": "google/gemma-4-E2B-it", "case": "number", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.099}
+{"model": "google/gemma-4-E2B-it", "case": "text", "thinking": false, "execution": "sequential", "type_valid": true, "correct": false, "seconds": 0.301}
+{"model": "google/gemma-4-E2B-it", "case": "bounded_text", "thinking": false, "execution": "sequential", "type_valid": true, "correct": false, "seconds": 0.06}
+{"model": "google/gemma-4-E2B-it", "case": "mixed", "thinking": false, "execution": "sequential", "type_valid": true, "correct": false, "seconds": 0.136}
+{"model": "google/gemma-4-E2B-it", "case": "enum", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 0.036}
+{"model": "google/gemma-4-E2B-it", "case": "boolean", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.035}
+{"model": "google/gemma-4-E2B-it", "case": "numeric_enum", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 0.036}
+{"model": "google/gemma-4-E2B-it", "case": "integer", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.059}
+{"model": "google/gemma-4-E2B-it", "case": "negative", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 0.646}
+{"model": "google/gemma-4-E2B-it", "case": "number", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 0.369}
+{"model": "google/gemma-4-E2B-it", "case": "text", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 0.056}
+{"model": "google/gemma-4-E2B-it", "case": "bounded_text", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 0.041}
+{"model": "google/gemma-4-E2B-it", "case": "mixed", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 0.737}
+{"model": "google/gemma-4-E2B-it", "case": "dag_diamond", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "isolation": true, "prefix_checks": [{"parent": "right", "child": "final", "preserved": true}, {"parent": "root", "child": "left", "preserved": true}, {"parent": "root", "child": "right", "preserved": true}], "seconds": 0.139}
+{"model": "google/gemma-4-E2B-it", "case": "dag_mixed", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "prefix_checks": [{"parent": "number", "child": "text", "preserved": true}, {"parent": "text", "child": "check", "preserved": true}], "seconds": 0.806}
+{"model": "google/gemma-4-E2B-it", "case": "dag_enum24", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "prefix_checks": [{"parent": "pick", "child": "check", "preserved": true}], "seconds": 0.091}
+{"model": "google/gemma-4-E2B-it", "case": "enum", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.991}
+{"model": "google/gemma-4-E2B-it", "case": "boolean", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.124}
+{"model": "google/gemma-4-E2B-it", "case": "numeric_enum", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.332}
+{"model": "google/gemma-4-E2B-it", "case": "integer", "thinking": true, "execution": "sequential", "type_valid": true, "correct": false, "seconds": 0.426}
+{"model": "google/gemma-4-E2B-it", "case": "negative", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.014}
+{"model": "google/gemma-4-E2B-it", "case": "number", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.775}
+{"model": "google/gemma-4-E2B-it", "case": "text", "thinking": true, "execution": "sequential", "type_valid": true, "correct": false, "seconds": 2.257}
+{"model": "google/gemma-4-E2B-it", "case": "bounded_text", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 2.903}
+{"model": "google/gemma-4-E2B-it", "case": "mixed", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 3.65}
+{"model": "google/gemma-4-E2B-it", "case": "enum", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.319}
+{"model": "google/gemma-4-E2B-it", "case": "boolean", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.047}
+{"model": "google/gemma-4-E2B-it", "case": "numeric_enum", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.235}
+{"model": "google/gemma-4-E2B-it", "case": "integer", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.797}
+{"model": "google/gemma-4-E2B-it", "case": "negative", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.747}
+{"model": "google/gemma-4-E2B-it", "case": "number", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.879}
+{"model": "google/gemma-4-E2B-it", "case": "text", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 2.866}
+{"model": "google/gemma-4-E2B-it", "case": "bounded_text", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 2.811}
+{"model": "google/gemma-4-E2B-it", "case": "mixed", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 4.733}
+{"model": "google/gemma-4-E2B-it", "case": "dag_diamond", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "isolation": true, "prefix_checks": [{"parent": "right", "child": "final", "preserved": true}, {"parent": "root", "child": "left", "preserved": true}, {"parent": "root", "child": "right", "preserved": true}], "seconds": 7.689}
+{"model": "google/gemma-4-E2B-it", "case": "dag_mixed", "thinking": true, "execution": "auto", "type_valid": true, "correct": false, "prefix_checks": [{"parent": "number", "child": "text", "preserved": true}, {"parent": "text", "child": "check", "preserved": true}], "seconds": 4.885}
+{"model": "google/gemma-4-E2B-it", "case": "dag_enum24", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "prefix_checks": [{"parent": "pick", "child": "check", "preserved": true}], "seconds": 2.593}
+{"model": "google/gemma-4-E2B-it", "total": 42, "completed": 42, "type_valid": 42, "correct": 24}

@@ -1,0 +1,45 @@
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+{"model": "openbmb/MiniCPM5-1B", "case": "enum", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.073}
+{"model": "openbmb/MiniCPM5-1B", "case": "boolean", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.01}
+{"model": "openbmb/MiniCPM5-1B", "case": "numeric_enum", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.01}
+{"model": "openbmb/MiniCPM5-1B", "case": "integer", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.028}
+{"model": "openbmb/MiniCPM5-1B", "case": "negative", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.04}
+{"model": "openbmb/MiniCPM5-1B", "case": "number", "thinking": false, "execution": "sequential", "type_valid": true, "correct": false, "seconds": 0.025}
+{"model": "openbmb/MiniCPM5-1B", "case": "text", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.292}
+{"model": "openbmb/MiniCPM5-1B", "case": "bounded_text", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.028}
+{"model": "openbmb/MiniCPM5-1B", "case": "mixed", "thinking": false, "execution": "sequential", "type_valid": true, "correct": false, "seconds": 0.057}
+{"model": "openbmb/MiniCPM5-1B", "case": "enum", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 0.016}
+{"model": "openbmb/MiniCPM5-1B", "case": "boolean", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 0.014}
+{"model": "openbmb/MiniCPM5-1B", "case": "numeric_enum", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 0.015}
+{"model": "openbmb/MiniCPM5-1B", "case": "integer", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.026}
+{"model": "openbmb/MiniCPM5-1B", "case": "negative", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 0.026}
+{"model": "openbmb/MiniCPM5-1B", "case": "number", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 0.026}
+{"model": "openbmb/MiniCPM5-1B", "case": "text", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 0.011}
+{"model": "openbmb/MiniCPM5-1B", "case": "bounded_text", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.016}
+{"model": "openbmb/MiniCPM5-1B", "case": "mixed", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 0.063}
+{"model": "openbmb/MiniCPM5-1B", "case": "dag_diamond", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "isolation": true, "prefix_checks": [{"parent": "right", "child": "final", "preserved": true}, {"parent": "root", "child": "left", "preserved": true}, {"parent": "root", "child": "right", "preserved": true}], "seconds": 0.052}
+{"model": "openbmb/MiniCPM5-1B", "case": "dag_mixed", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "prefix_checks": [{"parent": "number", "child": "text", "preserved": true}, {"parent": "text", "child": "check", "preserved": true}], "seconds": 0.098}
+{"model": "openbmb/MiniCPM5-1B", "case": "dag_enum24", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "prefix_checks": [{"parent": "pick", "child": "check", "preserved": true}], "seconds": 0.051}
+{"model": "openbmb/MiniCPM5-1B", "case": "enum", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.331}
+{"model": "openbmb/MiniCPM5-1B", "case": "boolean", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.126}
+{"model": "openbmb/MiniCPM5-1B", "case": "numeric_enum", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.357}
+{"model": "openbmb/MiniCPM5-1B", "case": "integer", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.811}
+{"model": "openbmb/MiniCPM5-1B", "case": "negative", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.158}
+{"model": "openbmb/MiniCPM5-1B", "case": "number", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.864}
+{"model": "openbmb/MiniCPM5-1B", "case": "text", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.127}
+{"model": "openbmb/MiniCPM5-1B", "case": "bounded_text", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.132}
+{"model": "openbmb/MiniCPM5-1B", "case": "mixed", "thinking": true, "execution": "sequential", "type_valid": true, "correct": false, "seconds": 3.525}
+{"model": "openbmb/MiniCPM5-1B", "case": "enum", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.674}
+{"model": "openbmb/MiniCPM5-1B", "case": "boolean", "thinking": true, "execution": "auto", "type_valid": true, "correct": false, "seconds": 1.134}
+{"model": "openbmb/MiniCPM5-1B", "case": "numeric_enum", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.135}
+{"model": "openbmb/MiniCPM5-1B", "case": "integer", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.844}
+{"model": "openbmb/MiniCPM5-1B", "case": "negative", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.088}
+{"model": "openbmb/MiniCPM5-1B", "case": "number", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.012}
+{"model": "openbmb/MiniCPM5-1B", "case": "text", "thinking": true, "execution": "auto", "type_valid": true, "correct": false, "seconds": 1.14}
+{"model": "openbmb/MiniCPM5-1B", "case": "bounded_text", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.132}
+{"model": "openbmb/MiniCPM5-1B", "case": "mixed", "thinking": true, "execution": "auto", "type_valid": true, "correct": false, "seconds": 4.477}
+{"model": "openbmb/MiniCPM5-1B", "case": "dag_diamond", "thinking": true, "execution": "auto", "error": "SGLangError: Thinking ended without a closing </think> marker; no typed result returned", "type_valid": false, "correct": false, "seconds": 2.769}
+{"model": "openbmb/MiniCPM5-1B", "case": "dag_mixed", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "prefix_checks": [{"parent": "number", "child": "text", "preserved": true}, {"parent": "text", "child": "check", "preserved": true}], "seconds": 2.454}
+{"model": "openbmb/MiniCPM5-1B", "case": "dag_enum24", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "prefix_checks": [{"parent": "pick", "child": "check", "preserved": true}], "seconds": 1.684}
+{"model": "openbmb/MiniCPM5-1B", "total": 42, "completed": 41, "type_valid": 41, "correct": 26}

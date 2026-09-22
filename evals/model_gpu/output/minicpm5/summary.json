@@ -1,0 +1,7 @@
+{
+  "model": "openbmb/MiniCPM5-1B",
+  "total": 42,
+  "completed": 41,
+  "type_valid": 41,
+  "correct": 26
+}

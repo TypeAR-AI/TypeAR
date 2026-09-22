@@ -533,8 +533,9 @@ class ThinkingTests(unittest.TestCase):
                 client.render_chat([], add_generation_prompt=True)
 
     def test_forced_thinking_keeps_all_final_decoders(self):
-        for execution in ("sequential", "batch"):
-            thinking = self.make_client({"text": "Partial", "meta_info": {"finish_reason": {"type": "length"}}})
+        stops = [{"type": "length"}, {"type": "stop", "matched": "<|im_end|>"}]
+        for execution, finish in [(mode, stop) for mode in ("sequential", "batch") for stop in stops]:
+            thinking = self.make_client({"text": "Partial", "meta_info": {"finish_reason": finish}})
             fake = FakeSGLang([ord("7"), 3, ord("A")])
             render = fake.render_chat
             def render_with_thinking(messages, *, add_generation_prompt):

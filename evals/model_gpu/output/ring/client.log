@@ -1,0 +1,46 @@
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[transformers] You are using a model of type `bailing_moe` to instantiate a model of type ``. This may be expected if you are loading a checkpoint that shares a subset of the architecture (e.g., loading a `sam2_video` checkpoint into `Sam2Model`), but is otherwise not supported and can yield errors. Please verify that the checkpoint is compatible with the model you are instantiating.
+{"model": "inclusionAI/Ring-mini-2.0", "case": "enum", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.555}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "boolean", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.152}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "numeric_enum", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.458}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "integer", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.413}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "negative", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.515}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "number", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.447}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "text", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.613}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "bounded_text", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.401}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "mixed", "thinking": false, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 3.899}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "enum", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.379}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "boolean", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.39}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "numeric_enum", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.262}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "integer", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.411}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "negative", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.414}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "number", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.449}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "text", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 1.386}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "bounded_text", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.369}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "mixed", "thinking": false, "execution": "auto", "type_valid": true, "correct": false, "seconds": 4.203}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "dag_diamond", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "isolation": true, "prefix_checks": [{"parent": "right", "child": "final", "preserved": true}, {"parent": "root", "child": "left", "preserved": true}, {"parent": "root", "child": "right", "preserved": true}], "seconds": 3.143}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "dag_mixed", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "prefix_checks": [{"parent": "number", "child": "text", "preserved": true}, {"parent": "text", "child": "check", "preserved": true}], "seconds": 4.177}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "dag_enum24", "thinking": false, "execution": "auto", "type_valid": true, "correct": true, "prefix_checks": [{"parent": "pick", "child": "check", "preserved": true}], "seconds": 1.596}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "enum", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.342}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "boolean", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.95}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "numeric_enum", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.235}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "integer", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.385}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "negative", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 0.197}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "number", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.419}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "text", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.354}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "bounded_text", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 1.357}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "mixed", "thinking": true, "execution": "sequential", "type_valid": true, "correct": true, "seconds": 3.296}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "enum", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.497}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "boolean", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.363}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "numeric_enum", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 0.564}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "integer", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.384}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "negative", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.383}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "number", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.42}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "text", "thinking": true, "execution": "auto", "type_valid": true, "correct": false, "seconds": 1.371}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "bounded_text", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 1.36}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "mixed", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "seconds": 4.477}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "dag_diamond", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "isolation": true, "prefix_checks": [{"parent": "right", "child": "final", "preserved": true}, {"parent": "root", "child": "left", "preserved": true}, {"parent": "root", "child": "right", "preserved": true}], "seconds": 6.205}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "dag_mixed", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "prefix_checks": [{"parent": "number", "child": "text", "preserved": true}, {"parent": "text", "child": "check", "preserved": true}], "seconds": 3.26}
+{"model": "inclusionAI/Ring-mini-2.0", "case": "dag_enum24", "thinking": true, "execution": "auto", "type_valid": true, "correct": true, "prefix_checks": [{"parent": "pick", "child": "check", "preserved": true}], "seconds": 1.85}
+{"model": "inclusionAI/Ring-mini-2.0", "total": 42, "completed": 42, "type_valid": 42, "correct": 39}

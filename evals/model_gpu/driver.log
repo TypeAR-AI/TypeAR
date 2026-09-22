@@ -1,0 +1,27 @@
+START openbmb/MiniCPM5-1B 2026-09-22T02:04:03Z
+LOADING openbmb/MiniCPM5-1B 2026-09-22T02:05:01Z
+TEST openbmb/MiniCPM5-1B
+TEST_EXIT openbmb/MiniCPM5-1B 1
+DONE openbmb/MiniCPM5-1B 2026-09-22T02:06:02Z
+START inclusionAI/Ling-mini-2.0 2026-09-22T02:06:02Z
+LOADING inclusionAI/Ling-mini-2.0 2026-09-22T02:07:00Z
+LOADING inclusionAI/Ling-mini-2.0 2026-09-22T02:08:00Z
+LOADING inclusionAI/Ling-mini-2.0 2026-09-22T02:09:00Z
+LOADING inclusionAI/Ling-mini-2.0 2026-09-22T02:10:01Z
+LOADING inclusionAI/Ling-mini-2.0 2026-09-22T02:11:01Z
+TEST inclusionAI/Ling-mini-2.0
+TEST_EXIT inclusionAI/Ling-mini-2.0 1
+DONE inclusionAI/Ling-mini-2.0 2026-09-22T02:11:39Z
+START inclusionAI/Ring-mini-2.0 2026-09-22T02:11:39Z
+LOADING inclusionAI/Ring-mini-2.0 2026-09-22T02:12:36Z
+LOADING inclusionAI/Ring-mini-2.0 2026-09-22T02:13:37Z
+LOADING inclusionAI/Ring-mini-2.0 2026-09-22T02:14:37Z
+TEST inclusionAI/Ring-mini-2.0
+TEST_EXIT inclusionAI/Ring-mini-2.0 1
+DONE inclusionAI/Ring-mini-2.0 2026-09-22T02:16:01Z
+START google/gemma-4-E2B-it 2026-09-22T02:16:01Z
+LOADING google/gemma-4-E2B-it 2026-09-22T02:16:59Z
+LOADING google/gemma-4-E2B-it 2026-09-22T02:17:59Z
+TEST google/gemma-4-E2B-it
+TEST_EXIT google/gemma-4-E2B-it 1
+DONE google/gemma-4-E2B-it 2026-09-22T02:19:28Z

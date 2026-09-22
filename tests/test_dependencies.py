@@ -8,6 +8,9 @@ from tests.test_typellm import FakeSGLang
 class DependencyFake(FakeSGLang):
     thinking = False
     _continuation_parts = SGLangClient._continuation_parts
+
+    def _prepare_answer_prefix(self, prompt):
+        return self._finish_thinking(prompt) if self.thinking else prompt
     complete_chat_prefix = SGLangClient.complete_chat_prefix
     extend_chat_prefix = SGLangClient.extend_chat_prefix
 

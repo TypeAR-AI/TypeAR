@@ -1,0 +1,7 @@
+{
+  "model": "google/gemma-4-E2B-it",
+  "total": 42,
+  "completed": 22,
+  "type_valid": 22,
+  "correct": 6
+}
