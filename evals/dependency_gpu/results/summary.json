@@ -1,0 +1,5 @@
+{
+  "passed": 6,
+  "total": 8,
+  "cache_note": "Warm shared server; no cache flush. Metadata demonstrates reuse, not a cold-cache benchmark."
+}

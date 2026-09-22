@@ -1,0 +1,27 @@
+{
+  "api_matrix": {
+    "total": 16,
+    "passed": 16,
+    "seconds": 54.57399832599913
+  },
+  "numeric128": {
+    "total": 128,
+    "passed": 128,
+    "seconds": 213.87149038500502
+  },
+  "validation": {
+    "total": 2,
+    "passed": 2,
+    "seconds": 0
+  },
+  "budget": {
+    "total": 1,
+    "passed": 1,
+    "seconds": 0
+  },
+  "run_schema": {
+    "total": 1,
+    "passed": 1,
+    "seconds": 0
+  }
+}

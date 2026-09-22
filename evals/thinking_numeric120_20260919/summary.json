@@ -1,0 +1,102 @@
+{
+  "overall": {
+    "cases": 120,
+    "correct": 120,
+    "accuracy": 1.0,
+    "returned": 120,
+    "errors": 0,
+    "type_violations": 0,
+    "returned_fields": 136,
+    "mean_seconds": 1.6749245279749743,
+    "total_seconds": 200.99094335699692,
+    "thinking_calls": 136,
+    "thinking_tokens": 10668,
+    "unclosed_thinking": 0
+  },
+  "categories": {
+    "integer_extraction": {
+      "cases": 22,
+      "correct": 22,
+      "accuracy": 1.0,
+      "returned": 22,
+      "errors": 0,
+      "type_violations": 0,
+      "returned_fields": 22,
+      "mean_seconds": 1.7373383917726992,
+      "total_seconds": 38.221444618999385,
+      "thinking_calls": 22,
+      "thinking_tokens": 1994,
+      "unclosed_thinking": 0
+    },
+    "integer_arithmetic": {
+      "cases": 22,
+      "correct": 22,
+      "accuracy": 1.0,
+      "returned": 22,
+      "errors": 0,
+      "type_violations": 0,
+      "returned_fields": 22,
+      "mean_seconds": 1.1150245477272578,
+      "total_seconds": 24.530540049999672,
+      "thinking_calls": 22,
+      "thinking_tokens": 1250,
+      "unclosed_thinking": 0
+    },
+    "number_extraction": {
+      "cases": 22,
+      "correct": 22,
+      "accuracy": 1.0,
+      "returned": 22,
+      "errors": 0,
+      "type_violations": 0,
+      "returned_fields": 22,
+      "mean_seconds": 1.8594566781363566,
+      "total_seconds": 40.908046918999844,
+      "thinking_calls": 22,
+      "thinking_tokens": 2161,
+      "unclosed_thinking": 0
+    },
+    "number_arithmetic": {
+      "cases": 22,
+      "correct": 22,
+      "accuracy": 1.0,
+      "returned": 22,
+      "errors": 0,
+      "type_violations": 0,
+      "returned_fields": 22,
+      "mean_seconds": 1.265269314772726,
+      "total_seconds": 27.835924924999972,
+      "thinking_calls": 22,
+      "thinking_tokens": 1425,
+      "unclosed_thinking": 0
+    },
+    "negative_integer": {
+      "cases": 16,
+      "correct": 16,
+      "accuracy": 1.0,
+      "returned": 16,
+      "errors": 0,
+      "type_violations": 0,
+      "returned_fields": 16,
+      "mean_seconds": 1.6735556764999728,
+      "total_seconds": 26.776890823999565,
+      "thinking_calls": 16,
+      "thinking_tokens": 1394,
+      "unclosed_thinking": 0
+    },
+    "sequential_dependency": {
+      "cases": 16,
+      "correct": 16,
+      "accuracy": 1.0,
+      "returned": 16,
+      "errors": 0,
+      "type_violations": 0,
+      "returned_fields": 32,
+      "mean_seconds": 2.6698810012499052,
+      "total_seconds": 42.718096019998484,
+      "thinking_calls": 32,
+      "thinking_tokens": 2444,
+      "unclosed_thinking": 0
+    }
+  }
+}

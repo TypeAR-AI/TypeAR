@@ -1,0 +1,45 @@
+[
+  {
+    "thinking": false,
+    "execution": "sequential",
+    "result": {
+      "total": 24.5,
+      "paid": true
+    }
+  },
+  {
+    "thinking": false,
+    "execution": "batch",
+    "result": {
+      "total": 24.5,
+      "paid": true
+    }
+  },
+  {
+    "thinking": true,
+    "execution": "sequential",
+    "result": {
+      "total": 24.5,
+      "paid": true
+    }
+  },
+  {
+    "thinking": true,
+    "execution": "batch",
+    "result": {
+      "total": 24.5,
+      "paid": true
+    }
+  },
+  {
+    "run_schema": true,
+    "result": {
+      "total": 24.5,
+      "paid": true
+    }
+  },
+  {
+    "budget_failure": true,
+    "error": "Thinking did not close within budget or ended prematurely; no typed result returned"
+  }
+]

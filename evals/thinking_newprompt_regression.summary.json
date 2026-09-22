@@ -1,0 +1,22 @@
+{
+  "off": {
+    "requests": 20,
+    "returned": 20,
+    "errors": 0,
+    "type_violations": 0,
+    "correct": 18,
+    "accuracy_denominator": 19,
+    "mean_seconds": 0.24234749714996723,
+    "thinking_tokens": 0
+  },
+  "on": {
+    "requests": 20,
+    "returned": 19,
+    "errors": 1,
+    "type_violations": 0,
+    "correct": 18,
+    "accuracy_denominator": 19,
+    "mean_seconds": 3.1175903693999545,
+    "thinking_tokens": 3640
+  }
+}

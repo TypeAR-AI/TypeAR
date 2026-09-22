@@ -1,0 +1,39 @@
+{
+  "two_newlines": {
+    "trials": 6,
+    "correct": 3,
+    "negative": 3,
+    "free_positive": 6
+  },
+  "one_newline": {
+    "trials": 6,
+    "correct": 4,
+    "negative": 2,
+    "free_positive": 6
+  },
+  "no_newline": {
+    "trials": 6,
+    "correct": 0,
+    "negative": 6,
+    "free_positive": 6
+  },
+  "example": {
+    "trial": 1,
+    "variant": "two_newlines",
+    "unconstrained": "+24.5",
+    "constrained": -24.5,
+    "first_step_candidates": [
+      {
+        "token": "-",
+        "logprob": -18.750001907348633,
+        "raw_probability": 7.19411930861867e-09
+      },
+      {
+        "token": "2",
+        "logprob": -20.875001907348633,
+        "raw_probability": 8.592150230932485e-10
+      }
+    ],
+    "plus_logprob": -2.622600959512056e-06
+  }
+}

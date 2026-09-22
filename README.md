@@ -147,8 +147,6 @@ TypeLLM supports finite decisions, numeric fields, and free text:
 | Enum choice | `{"type": "string", "enum": ["meal", "travel"]}` | Candidate type: `str`, `int`, or `float` |
 
 Enum choices support `string`, `integer`, and `number` types, with at most 24 values. The declared `type` validates the candidate values.
-The tokenizer must provide enough distinct single-token control labels; the
-default pool uses A–Z and 0–9, with 24 candidates normally mapped to A–X.
 
 Generation works in three ways:
 

@@ -1,0 +1,148 @@
+{"group": "api_matrix", "thinking": false, "execution": "sequential", "input": "state", "shape": "questions", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 1.6359172489992488}
+{"group": "api_matrix", "thinking": false, "execution": "sequential", "input": "state", "shape": "schema", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 1.0743320740002673}
+{"group": "api_matrix", "thinking": false, "execution": "sequential", "input": "context", "shape": "questions", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 1.0681459190000169}
+{"group": "api_matrix", "thinking": false, "execution": "sequential", "input": "context", "shape": "schema", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 1.0728518159994564}
+{"group": "api_matrix", "thinking": false, "execution": "batch", "input": "state", "shape": "questions", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 1.0917561720016238}
+{"group": "api_matrix", "thinking": false, "execution": "batch", "input": "state", "shape": "schema", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 1.079238460999477}
+{"group": "api_matrix", "thinking": false, "execution": "batch", "input": "context", "shape": "questions", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 1.0765007629997854}
+{"group": "api_matrix", "thinking": false, "execution": "batch", "input": "context", "shape": "schema", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 1.0686123989999032}
+{"group": "api_matrix", "thinking": true, "execution": "sequential", "input": "state", "shape": "questions", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 5.524598780000815}
+{"group": "api_matrix", "thinking": true, "execution": "sequential", "input": "state", "shape": "schema", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 6.375891028999831}
+{"group": "api_matrix", "thinking": true, "execution": "sequential", "input": "context", "shape": "questions", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 5.860663920999286}
+{"group": "api_matrix", "thinking": true, "execution": "sequential", "input": "context", "shape": "schema", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 5.495330810999803}
+{"group": "api_matrix", "thinking": true, "execution": "batch", "input": "state", "shape": "questions", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 5.642187712999657}
+{"group": "api_matrix", "thinking": true, "execution": "batch", "input": "state", "shape": "schema", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 5.448420876000455}
+{"group": "api_matrix", "thinking": true, "execution": "batch", "input": "context", "shape": "questions", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 5.691007837000143}
+{"group": "api_matrix", "thinking": true, "execution": "batch", "input": "context", "shape": "schema", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}, "error": null, "seconds": 5.368542505999358}
+{"group": "numeric128", "id": "integer_extraction_000", "expected": 5057, "passed": true, "type_safe": true, "result": {"answer": 5057}, "error": null, "seconds": 2.393937807999464}
+{"group": "numeric128", "id": "integer_extraction_001", "expected": 2534, "passed": true, "type_safe": true, "result": {"answer": 2534}, "error": null, "seconds": 1.663591237998844}
+{"group": "numeric128", "id": "integer_extraction_002", "expected": 836, "passed": true, "type_safe": true, "result": {"answer": 836}, "error": null, "seconds": 1.4830198020008538}
+{"group": "numeric128", "id": "integer_extraction_003", "expected": 9949, "passed": true, "type_safe": true, "result": {"answer": 9949}, "error": null, "seconds": 1.6873695909998787}
+{"group": "numeric128", "id": "integer_extraction_004", "expected": 7074, "passed": true, "type_safe": true, "result": {"answer": 7074}, "error": null, "seconds": 1.784375318999082}
+{"group": "numeric128", "id": "integer_extraction_005", "expected": 5778, "passed": true, "type_safe": true, "result": {"answer": 5778}, "error": null, "seconds": 1.666006405999724}
+{"group": "numeric128", "id": "integer_extraction_006", "expected": 5339, "passed": true, "type_safe": true, "result": {"answer": 5339}, "error": null, "seconds": 1.540810769000018}
+{"group": "numeric128", "id": "integer_extraction_007", "expected": 2577, "passed": true, "type_safe": true, "result": {"answer": 2577}, "error": null, "seconds": 1.7028775090002455}
+{"group": "numeric128", "id": "integer_extraction_008", "expected": 5877, "passed": true, "type_safe": true, "result": {"answer": 5877}, "error": null, "seconds": 1.7198405470007856}
+{"group": "numeric128", "id": "integer_extraction_009", "expected": 1805, "passed": true, "type_safe": true, "result": {"answer": 1805}, "error": null, "seconds": 1.7828280900012032}
+{"group": "numeric128", "id": "integer_extraction_010", "expected": 9002, "passed": true, "type_safe": true, "result": {"answer": 9002}, "error": null, "seconds": 1.6777395179997256}
+{"group": "numeric128", "id": "integer_extraction_011", "expected": 9673, "passed": true, "type_safe": true, "result": {"answer": 9673}, "error": null, "seconds": 1.3019058760000917}
+{"group": "numeric128", "id": "integer_extraction_012", "expected": 6063, "passed": true, "type_safe": true, "result": {"answer": 6063}, "error": null, "seconds": 1.6417592639991199}
+{"group": "numeric128", "id": "integer_extraction_013", "expected": 2055, "passed": true, "type_safe": true, "result": {"answer": 2055}, "error": null, "seconds": 1.7518328429996473}
+{"group": "numeric128", "id": "integer_extraction_014", "expected": 1613, "passed": true, "type_safe": true, "result": {"answer": 1613}, "error": null, "seconds": 1.6308187729991914}
+{"group": "numeric128", "id": "integer_extraction_015", "expected": 3576, "passed": true, "type_safe": true, "result": {"answer": 3576}, "error": null, "seconds": 1.540870148999602}
+{"group": "numeric128", "id": "integer_extraction_016", "expected": 3128, "passed": true, "type_safe": true, "result": {"answer": 3128}, "error": null, "seconds": 1.8501725300011458}
+{"group": "numeric128", "id": "integer_extraction_017", "expected": 771, "passed": true, "type_safe": true, "result": {"answer": 771}, "error": null, "seconds": 1.4988816700006282}
+{"group": "numeric128", "id": "integer_extraction_018", "expected": 5520, "passed": true, "type_safe": true, "result": {"answer": 5520}, "error": null, "seconds": 1.816423145999579}
+{"group": "numeric128", "id": "integer_extraction_019", "expected": 2995, "passed": true, "type_safe": true, "result": {"answer": 2995}, "error": null, "seconds": 1.6549136740013637}
+{"group": "numeric128", "id": "integer_extraction_020", "expected": 9890, "passed": true, "type_safe": true, "result": {"answer": 9890}, "error": null, "seconds": 1.4454522900014126}
+{"group": "numeric128", "id": "integer_extraction_021", "expected": 4752, "passed": true, "type_safe": true, "result": {"answer": 4752}, "error": null, "seconds": 1.7514905529988027}
+{"group": "numeric128", "id": "integer_extraction_022", "expected": 3865, "passed": true, "type_safe": true, "result": {"answer": 3865}, "error": null, "seconds": 1.5487498339989543}
+{"group": "numeric128", "id": "integer_extraction_023", "expected": 9940, "passed": true, "type_safe": true, "result": {"answer": 9940}, "error": null, "seconds": 1.9648377760004223}
+{"group": "numeric128", "id": "integer_arithmetic_000", "expected": 1440, "passed": true, "type_safe": true, "result": {"answer": 1440}, "error": null, "seconds": 1.0107933010003762}
+{"group": "numeric128", "id": "integer_arithmetic_001", "expected": -587, "passed": true, "type_safe": true, "result": {"answer": -587}, "error": null, "seconds": 0.9916640060000645}
+{"group": "numeric128", "id": "integer_arithmetic_002", "expected": 2701, "passed": true, "type_safe": true, "result": {"answer": 2701}, "error": null, "seconds": 1.3293111060011142}
+{"group": "numeric128", "id": "integer_arithmetic_003", "expected": 932, "passed": true, "type_safe": true, "result": {"answer": 932}, "error": null, "seconds": 1.6695977939998556}
+{"group": "numeric128", "id": "integer_arithmetic_004", "expected": -465, "passed": true, "type_safe": true, "result": {"answer": -465}, "error": null, "seconds": 0.9736159689982742}
+{"group": "numeric128", "id": "integer_arithmetic_005", "expected": 660, "passed": true, "type_safe": true, "result": {"answer": 660}, "error": null, "seconds": 1.0182643959997222}
+{"group": "numeric128", "id": "integer_arithmetic_006", "expected": 749, "passed": true, "type_safe": true, "result": {"answer": 749}, "error": null, "seconds": 0.8999442829990585}
+{"group": "numeric128", "id": "integer_arithmetic_007", "expected": -455, "passed": true, "type_safe": true, "result": {"answer": -455}, "error": null, "seconds": 1.060584775001189}
+{"group": "numeric128", "id": "integer_arithmetic_008", "expected": 2772, "passed": true, "type_safe": true, "result": {"answer": 2772}, "error": null, "seconds": 1.3927626589993451}
+{"group": "numeric128", "id": "integer_arithmetic_009", "expected": 794, "passed": true, "type_safe": true, "result": {"answer": 794}, "error": null, "seconds": 0.8843966950007598}
+{"group": "numeric128", "id": "integer_arithmetic_010", "expected": -626, "passed": true, "type_safe": true, "result": {"answer": -626}, "error": null, "seconds": 1.0249480710008356}
+{"group": "numeric128", "id": "integer_arithmetic_011", "expected": 1925, "passed": true, "type_safe": true, "result": {"answer": 1925}, "error": null, "seconds": 1.9226274370012106}
+{"group": "numeric128", "id": "integer_arithmetic_012", "expected": 348, "passed": true, "type_safe": true, "result": {"answer": 348}, "error": null, "seconds": 1.4303896609999356}
+{"group": "numeric128", "id": "integer_arithmetic_013", "expected": -164, "passed": true, "type_safe": true, "result": {"answer": -164}, "error": null, "seconds": 1.235219704998599}
+{"group": "numeric128", "id": "integer_arithmetic_014", "expected": 4824, "passed": true, "type_safe": true, "result": {"answer": 4824}, "error": null, "seconds": 1.2193937869997171}
+{"group": "numeric128", "id": "integer_arithmetic_015", "expected": 435, "passed": true, "type_safe": true, "result": {"answer": 435}, "error": null, "seconds": 0.9869356299986976}
+{"group": "numeric128", "id": "integer_arithmetic_016", "expected": -377, "passed": true, "type_safe": true, "result": {"answer": -377}, "error": null, "seconds": 1.6952184149995446}
+{"group": "numeric128", "id": "integer_arithmetic_017", "expected": 5913, "passed": true, "type_safe": true, "result": {"answer": 5913}, "error": null, "seconds": 1.2201706169998943}
+{"group": "numeric128", "id": "integer_arithmetic_018", "expected": 741, "passed": true, "type_safe": true, "result": {"answer": 741}, "error": null, "seconds": 0.9679575629997998}
+{"group": "numeric128", "id": "integer_arithmetic_019", "expected": -113, "passed": true, "type_safe": true, "result": {"answer": -113}, "error": null, "seconds": 1.5897181130003446}
+{"group": "numeric128", "id": "integer_arithmetic_020", "expected": 171, "passed": true, "type_safe": true, "result": {"answer": 171}, "error": null, "seconds": 1.5268482499996026}
+{"group": "numeric128", "id": "integer_arithmetic_021", "expected": 216, "passed": true, "type_safe": true, "result": {"answer": 216}, "error": null, "seconds": 0.965756315001272}
+{"group": "numeric128", "id": "integer_arithmetic_022", "expected": -365, "passed": true, "type_safe": true, "result": {"answer": -365}, "error": null, "seconds": 1.0448742659991694}
+{"group": "numeric128", "id": "integer_arithmetic_023", "expected": 846, "passed": true, "type_safe": true, "result": {"answer": 846}, "error": null, "seconds": 1.2409832409994124}
+{"group": "numeric128", "id": "number_extraction_000", "expected": -169.5, "passed": true, "type_safe": true, "result": {"answer": -169.5}, "error": null, "seconds": 1.7664516820004792}
+{"group": "numeric128", "id": "number_extraction_001", "expected": -85.25, "passed": true, "type_safe": true, "result": {"answer": -85.25}, "error": null, "seconds": 1.8924808890005806}
+{"group": "numeric128", "id": "number_extraction_002", "expected": 440.8, "passed": true, "type_safe": true, "result": {"answer": 440.8}, "error": null, "seconds": 1.8590559839994967}
+{"group": "numeric128", "id": "number_extraction_003", "expected": 258.5, "passed": true, "type_safe": true, "result": {"answer": 258.5}, "error": null, "seconds": 1.8525002879996464}
+{"group": "numeric128", "id": "number_extraction_004", "expected": -78.5, "passed": true, "type_safe": true, "result": {"answer": -78.5}, "error": null, "seconds": 1.900539342999764}
+{"group": "numeric128", "id": "number_extraction_005", "expected": 120.75, "passed": true, "type_safe": true, "result": {"answer": 120.75}, "error": null, "seconds": 1.845835462998366}
+{"group": "numeric128", "id": "number_extraction_006", "expected": -160.5, "passed": true, "type_safe": true, "result": {"answer": -160.5}, "error": null, "seconds": 2.2568194799987396}
+{"group": "numeric128", "id": "number_extraction_007", "expected": 244.75, "passed": true, "type_safe": true, "result": {"answer": 244.75}, "error": null, "seconds": 1.8766111309996631}
+{"group": "numeric128", "id": "number_extraction_008", "expected": 214.1, "passed": true, "type_safe": true, "result": {"answer": 214.1}, "error": null, "seconds": 1.8236638199996378}
+{"group": "numeric128", "id": "number_extraction_009", "expected": 10.25, "passed": true, "type_safe": true, "result": {"answer": 10.25}, "error": null, "seconds": 1.6610825499992643}
+{"group": "numeric128", "id": "number_extraction_010", "expected": 14.1, "passed": true, "type_safe": true, "result": {"answer": 14.1}, "error": null, "seconds": 1.5938699500002258}
+{"group": "numeric128", "id": "number_extraction_011", "expected": 231.25, "passed": true, "type_safe": true, "result": {"answer": 231.25}, "error": null, "seconds": 1.8029677649992664}
+{"group": "numeric128", "id": "number_extraction_012", "expected": 443.25, "passed": true, "type_safe": true, "result": {"answer": 443.25}, "error": null, "seconds": 2.178128307001316}
+{"group": "numeric128", "id": "number_extraction_013", "expected": 175.75, "passed": true, "type_safe": true, "result": {"answer": 175.75}, "error": null, "seconds": 1.687628161000248}
+{"group": "numeric128", "id": "number_extraction_014", "expected": -100.2, "passed": true, "type_safe": true, "result": {"answer": -100.2}, "error": null, "seconds": 1.655511643999489}
+{"group": "numeric128", "id": "number_extraction_015", "expected": -192.25, "passed": true, "type_safe": true, "result": {"answer": -192.25}, "error": null, "seconds": 1.9951139530003275}
+{"group": "numeric128", "id": "number_extraction_016", "expected": 276.75, "passed": true, "type_safe": true, "result": {"answer": 276.75}, "error": null, "seconds": 1.9563515909994749}
+{"group": "numeric128", "id": "number_extraction_017", "expected": 343.25, "passed": true, "type_safe": true, "result": {"answer": 343.25}, "error": null, "seconds": 1.8661992789984652}
+{"group": "numeric128", "id": "number_extraction_018", "expected": 0.75, "passed": true, "type_safe": true, "result": {"answer": 0.75}, "error": null, "seconds": 1.6822653340004763}
+{"group": "numeric128", "id": "number_extraction_019", "expected": 247.5, "passed": true, "type_safe": true, "result": {"answer": 247.5}, "error": null, "seconds": 1.7252411129993561}
+{"group": "numeric128", "id": "number_extraction_020", "expected": 184.5, "passed": true, "type_safe": true, "result": {"answer": 184.5}, "error": null, "seconds": 1.9337413579996792}
+{"group": "numeric128", "id": "number_extraction_021", "expected": 418.8, "passed": true, "type_safe": true, "result": {"answer": 418.8}, "error": null, "seconds": 1.8535919779988035}
+{"group": "numeric128", "id": "number_extraction_022", "expected": 394.8, "passed": true, "type_safe": true, "result": {"answer": 394.8}, "error": null, "seconds": 1.6130555260006076}
+{"group": "numeric128", "id": "number_extraction_023", "expected": -66.5, "passed": true, "type_safe": true, "result": {"answer": -66.5}, "error": null, "seconds": 1.7393278519994055}
+{"group": "numeric128", "id": "number_arithmetic_000", "expected": 52.8, "passed": true, "type_safe": true, "result": {"answer": 52.8}, "error": null, "seconds": 1.1908983289995376}
+{"group": "numeric128", "id": "number_arithmetic_001", "expected": 35.6, "passed": true, "type_safe": true, "result": {"answer": 35.6}, "error": null, "seconds": 1.0562239280006906}
+{"group": "numeric128", "id": "number_arithmetic_002", "expected": -1.8, "passed": true, "type_safe": true, "result": {"answer": -1.8}, "error": null, "seconds": 1.0019903480006178}
+{"group": "numeric128", "id": "number_arithmetic_003", "expected": 10.7, "passed": true, "type_safe": true, "result": {"answer": 10.7}, "error": null, "seconds": 1.0725633760011988}
+{"group": "numeric128", "id": "number_arithmetic_004", "expected": 13.05, "passed": true, "type_safe": true, "result": {"answer": 13.05}, "error": null, "seconds": 1.402629550999336}
+{"group": "numeric128", "id": "number_arithmetic_005", "expected": 11.5, "passed": true, "type_safe": true, "result": {"answer": 11.5}, "error": null, "seconds": 1.1076156599992828}
+{"group": "numeric128", "id": "number_arithmetic_006", "expected": 59.8, "passed": true, "type_safe": true, "result": {"answer": 59.8}, "error": null, "seconds": 1.0545751589997963}
+{"group": "numeric128", "id": "number_arithmetic_007", "expected": 2.9, "passed": true, "type_safe": true, "result": {"answer": 2.9}, "error": null, "seconds": 1.6694521240005997}
+{"group": "numeric128", "id": "number_arithmetic_008", "expected": -24.4, "passed": true, "type_safe": true, "result": {"answer": -24.4}, "error": null, "seconds": 1.277569334000873}
+{"group": "numeric128", "id": "number_arithmetic_009", "expected": 13.6, "passed": true, "type_safe": true, "result": {"answer": 13.6}, "error": null, "seconds": 1.0753417239993723}
+{"group": "numeric128", "id": "number_arithmetic_010", "expected": 5.35, "passed": true, "type_safe": true, "result": {"answer": 5.35}, "error": null, "seconds": 1.8257686180004384}
+{"group": "numeric128", "id": "number_arithmetic_011", "expected": -8.5, "passed": true, "type_safe": true, "result": {"answer": -8.5}, "error": null, "seconds": 1.123958087999199}
+{"group": "numeric128", "id": "number_arithmetic_012", "expected": 1.55, "passed": true, "type_safe": true, "result": {"answer": 1.55}, "error": null, "seconds": 1.1556583439996757}
+{"group": "numeric128", "id": "number_arithmetic_013", "expected": 33.5, "passed": true, "type_safe": true, "result": {"answer": 33.5}, "error": null, "seconds": 1.1240093280011934}
+{"group": "numeric128", "id": "number_arithmetic_014", "expected": 6.85, "passed": true, "type_safe": true, "result": {"answer": 6.85}, "error": null, "seconds": 1.004728496000098}
+{"group": "numeric128", "id": "number_arithmetic_015", "expected": 1.7, "passed": true, "type_safe": true, "result": {"answer": 1.7}, "error": null, "seconds": 0.9630533870004001}
+{"group": "numeric128", "id": "number_arithmetic_016", "expected": 44.25, "passed": true, "type_safe": true, "result": {"answer": 44.25}, "error": null, "seconds": 1.1340518410015648}
+{"group": "numeric128", "id": "number_arithmetic_017", "expected": 35.4, "passed": true, "type_safe": true, "result": {"answer": 35.4}, "error": null, "seconds": 1.3142879070001072}
+{"group": "numeric128", "id": "number_arithmetic_018", "expected": 35.4, "passed": true, "type_safe": true, "result": {"answer": 35.4}, "error": null, "seconds": 1.5681615980010974}
+{"group": "numeric128", "id": "number_arithmetic_019", "expected": 24.5, "passed": true, "type_safe": true, "result": {"answer": 24.5}, "error": null, "seconds": 1.0753282440000476}
+{"group": "numeric128", "id": "number_arithmetic_020", "expected": -1.35, "passed": true, "type_safe": true, "result": {"answer": -1.35}, "error": null, "seconds": 1.6733263610003632}
+{"group": "numeric128", "id": "number_arithmetic_021", "expected": -1.5, "passed": true, "type_safe": true, "result": {"answer": -1.5}, "error": null, "seconds": 1.0442983869997988}
+{"group": "numeric128", "id": "number_arithmetic_022", "expected": 7.2, "passed": true, "type_safe": true, "result": {"answer": 7.2}, "error": null, "seconds": 1.097927886999969}
+{"group": "numeric128", "id": "number_arithmetic_023", "expected": 11.6, "passed": true, "type_safe": true, "result": {"answer": 11.6}, "error": null, "seconds": 1.2512998940001125}
+{"group": "numeric128", "id": "negative_integer_000", "expected": -4187, "passed": true, "type_safe": true, "result": {"answer": -4187}, "error": null, "seconds": 1.66136336999989}
+{"group": "numeric128", "id": "negative_integer_001", "expected": -7641, "passed": true, "type_safe": true, "result": {"answer": -7641}, "error": null, "seconds": 1.6613225900000543}
+{"group": "numeric128", "id": "negative_integer_002", "expected": -8665, "passed": true, "type_safe": true, "result": {"answer": -8665}, "error": null, "seconds": 1.745968797000387}
+{"group": "numeric128", "id": "negative_integer_003", "expected": -9515, "passed": true, "type_safe": true, "result": {"answer": -9515}, "error": null, "seconds": 1.7453027480005403}
+{"group": "numeric128", "id": "negative_integer_004", "expected": -4805, "passed": true, "type_safe": true, "result": {"answer": -4805}, "error": null, "seconds": 1.630251163000139}
+{"group": "numeric128", "id": "negative_integer_005", "expected": -5167, "passed": true, "type_safe": true, "result": {"answer": -5167}, "error": null, "seconds": 1.8061870420006017}
+{"group": "numeric128", "id": "negative_integer_006", "expected": -9964, "passed": true, "type_safe": true, "result": {"answer": -9964}, "error": null, "seconds": 1.4708838610004022}
+{"group": "numeric128", "id": "negative_integer_007", "expected": -6062, "passed": true, "type_safe": true, "result": {"answer": -6062}, "error": null, "seconds": 1.2472977570014336}
+{"group": "numeric128", "id": "negative_integer_008", "expected": -1763, "passed": true, "type_safe": true, "result": {"answer": -1763}, "error": null, "seconds": 1.8548065169998154}
+{"group": "numeric128", "id": "negative_integer_009", "expected": -5400, "passed": true, "type_safe": true, "result": {"answer": -5400}, "error": null, "seconds": 1.7741582770013338}
+{"group": "numeric128", "id": "negative_integer_010", "expected": -7061, "passed": true, "type_safe": true, "result": {"answer": -7061}, "error": null, "seconds": 1.5505923119999352}
+{"group": "numeric128", "id": "negative_integer_011", "expected": -4484, "passed": true, "type_safe": true, "result": {"answer": -4484}, "error": null, "seconds": 1.6617818400009128}
+{"group": "numeric128", "id": "negative_integer_012", "expected": -8506, "passed": true, "type_safe": true, "result": {"answer": -8506}, "error": null, "seconds": 1.7845001480000064}
+{"group": "numeric128", "id": "negative_integer_013", "expected": -3273, "passed": true, "type_safe": true, "result": {"answer": -3273}, "error": null, "seconds": 1.677557037999577}
+{"group": "numeric128", "id": "negative_integer_014", "expected": -1752, "passed": true, "type_safe": true, "result": {"answer": -1752}, "error": null, "seconds": 1.645374512001581}
+{"group": "numeric128", "id": "negative_integer_015", "expected": -1303, "passed": true, "type_safe": true, "result": {"answer": -1303}, "error": null, "seconds": 1.6777894480001123}
+{"group": "numeric128", "id": "sequential_dependency_000", "expected": 12, "passed": true, "type_safe": true, "result": {"answer": 12, "is_positive": true}, "error": null, "seconds": 3.3294353450000926}
+{"group": "numeric128", "id": "sequential_dependency_001", "expected": -68, "passed": true, "type_safe": true, "result": {"answer": -68, "is_positive": false}, "error": null, "seconds": 2.5615899829990667}
+{"group": "numeric128", "id": "sequential_dependency_002", "expected": 23, "passed": true, "type_safe": true, "result": {"answer": 23, "is_positive": true}, "error": null, "seconds": 2.015149607999774}
+{"group": "numeric128", "id": "sequential_dependency_003", "expected": -48, "passed": true, "type_safe": true, "result": {"answer": -48, "is_positive": false}, "error": null, "seconds": 2.5508280110007036}
+{"group": "numeric128", "id": "sequential_dependency_004", "expected": 8, "passed": true, "type_safe": true, "result": {"answer": 8, "is_positive": true}, "error": null, "seconds": 2.814525717001743}
+{"group": "numeric128", "id": "sequential_dependency_005", "expected": -58, "passed": true, "type_safe": true, "result": {"answer": -58, "is_positive": false}, "error": null, "seconds": 2.7827482390002842}
+{"group": "numeric128", "id": "sequential_dependency_006", "expected": 3, "passed": true, "type_safe": true, "result": {"answer": 3, "is_positive": true}, "error": null, "seconds": 2.4430262219993892}
+{"group": "numeric128", "id": "sequential_dependency_007", "expected": -23, "passed": true, "type_safe": true, "result": {"answer": -23, "is_positive": false}, "error": null, "seconds": 3.427130632000626}
+{"group": "numeric128", "id": "sequential_dependency_008", "expected": 14, "passed": true, "type_safe": true, "result": {"answer": 14, "is_positive": true}, "error": null, "seconds": 2.404639809999935}
+{"group": "numeric128", "id": "sequential_dependency_009", "expected": -27, "passed": true, "type_safe": true, "result": {"answer": -27, "is_positive": false}, "error": null, "seconds": 2.075549023000349}
+{"group": "numeric128", "id": "sequential_dependency_010", "expected": -80, "passed": true, "type_safe": true, "result": {"answer": -80, "is_positive": false}, "error": null, "seconds": 3.2129286609997507}
+{"group": "numeric128", "id": "sequential_dependency_011", "expected": -84, "passed": true, "type_safe": true, "result": {"answer": -84, "is_positive": false}, "error": null, "seconds": 2.392159689001346}
+{"group": "numeric128", "id": "sequential_dependency_012", "expected": 126, "passed": true, "type_safe": true, "result": {"answer": 126, "is_positive": true}, "error": null, "seconds": 2.576474772000438}
+{"group": "numeric128", "id": "sequential_dependency_013", "expected": 41, "passed": true, "type_safe": true, "result": {"answer": 41, "is_positive": true}, "error": null, "seconds": 3.16390625799977}
+{"group": "numeric128", "id": "sequential_dependency_014", "expected": -114, "passed": true, "type_safe": true, "result": {"answer": -114, "is_positive": false}, "error": null, "seconds": 2.402173311000297}
+{"group": "numeric128", "id": "sequential_dependency_015", "expected": -87, "passed": true, "type_safe": true, "result": {"answer": -87, "is_positive": false}, "error": null, "seconds": 4.038854299999002}
+{"group": "validation", "id": "question", "passed": true, "error_message": "question for 'paid' is no longer supported; use instructions"}
+{"group": "validation", "id": "x-question", "passed": true, "error_message": "x-question for 'paid' is no longer supported; use instructions"}
+{"group": "budget", "passed": true, "error_message": "Thinking did not close within budget or ended prematurely; no typed result returned"}
+{"group": "run_schema", "passed": true, "result": {"total": 24.5, "paid": true, "currency": "GBP"}}

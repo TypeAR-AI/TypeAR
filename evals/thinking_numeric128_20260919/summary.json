@@ -1,0 +1,25 @@
+{
+  "cases": 128,
+  "correct": 128,
+  "accuracy": 1.0,
+  "type_violations": 0,
+  "errors": 0,
+  "unclosed_thinking": 0,
+  "returned_fields": 144,
+  "thinking_tokens": 11306,
+  "total_seconds": 214.34066395799755,
+  "mean_seconds": 1.6745364371718559,
+  "categories": {
+    "integer_extraction": 24,
+    "integer_arithmetic": 24,
+    "number_extraction": 24,
+    "number_arithmetic": 24,
+    "negative_integer": 16,
+    "sequential_dependency": 16
+  },
+  "runtime_sha256": "deb55b90f648468aabcad748792e797ce92ae07e3a21f3634672e23900bb555a",
+  "source_runs": [
+    "thinking_numeric120_20260919",
+    "thinking_numeric8_20260919"
+  ]
+}

@@ -1,0 +1,8 @@
+{"id": "integer_extraction_022", "category": "integer_extraction", "context": "Invoice INV-1022. The final item count is 3865 units.", "question": "What is the final item count?", "type": "integer", "expected": 3865}
+{"id": "integer_extraction_023", "category": "integer_extraction", "context": "Invoice INV-1023. The final item count is 9940 units.", "question": "What is the final item count?", "type": "integer", "expected": 9940}
+{"id": "integer_arithmetic_022", "category": "integer_arithmetic", "context": "Calculate the requested value accurately.", "question": "What is 395 minus 760?", "type": "integer", "expected": -365}
+{"id": "integer_arithmetic_023", "category": "integer_arithmetic", "context": "Calculate the requested value accurately.", "question": "What is 94 multiplied by 9?", "type": "integer", "expected": 846}
+{"id": "number_extraction_022", "category": "number_extraction", "context": "Sensor 22 recorded a calibrated reading of 394.8 volts.", "question": "What calibrated voltage was recorded?", "type": "number", "expected": 394.8}
+{"id": "number_extraction_023", "category": "number_extraction", "context": "Sensor 23 recorded a calibrated reading of -66.5 volts.", "question": "What calibrated voltage was recorded?", "type": "number", "expected": -66.5}
+{"id": "number_arithmetic_022", "category": "number_arithmetic", "context": "Calculate the requested value accurately.", "question": "What is 3.6 multiplied by 2.0?", "type": "number", "expected": 7.2}
+{"id": "number_arithmetic_023", "category": "number_arithmetic", "context": "Calculate the requested value accurately.", "question": "What is 4.8 plus 6.8?", "type": "number", "expected": 11.6}
