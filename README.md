@@ -3,7 +3,7 @@
 ### Updates
 
 - **[2026/09/22]** Added `depends_on` dependency-graph execution with incremental
-  parent-prefix reuse, and expanded enum support to 24 candidates.
+  parent-prefix reuse.
 
 - **[2026/09/19]** Added optional [thinking mode](#thinking-mode) with
   `thinking=True/False` and a configurable per-field thinking budget, followed
