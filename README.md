@@ -43,21 +43,32 @@ TypeLLM was inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing
 
 ## JevBench results
 
-Evaluated on 231 public JevBench decisions.
+Evaluated on 231 public [JevBench](https://github.com/fstandhartinger/jevbench) tasks.
 
 | Evaluation / metric | Open-Jev 27B v1.1 | Jev 1.13.0 | GPT-5.6 Luna (none) | GPT-6 Astra (low) | TypeLLM + Qwen3.8-27B (no thinking) | TypeLLM + Qwen3.8-27B (thinking) |
 |---|---:|---:|---:|---:|---:|---:|
-| **JevBench public · correct / 231** | **197/231 · 85.28%** | **200/231 · 86.58%** | **206/231 · 89.18%** | **231/231 · 100.00%** | **195/231 · 84.42%** | **228/231 · 98.70%** |
-| JevBench original · correct / 72 | 69/72 | 71/72 | 69/72 | 72/72 | 71/72 | 72/72 |
-| JevBench easy · correct / 48 | 48/48 | 48/48 | 48/48 | 48/48 | 48/48 | 47/48 |
-| JevBench hard · correct / 111 | 80/111 | 81/111 | 89/111 | 111/111 | 76/111 | 109/111 |
-
-Both TypeLLM runs use **Qwen3.8-27B**, checkpoint
-`RadixArk/Qwen3.8-27B-NVFP4-BF16-LMHead` (NVFP4 weights, BF16 language-model head).
+| Original · correct / 72 | 69/72 | 71/72 | 69/72 | 72/72 | 71/72 | 72/72 |
+| Easy · correct / 48 | 48/48 | 48/48 | 48/48 | 48/48 | 48/48 | 47/48 |
+| Hard · correct / 111 | 80/111 | 81/111 | 89/111 | 111/111 | 76/111 | 109/111 |
+| **Public · correct / 231** | **197/231** | **200/231** | **206/231** | **231/231** | **195/231** | **228/231** |
+| **Public · accuracy** | **85.28%** | **86.58%** | **89.18%** | **100.00%** | **84.42%** | **98.70%** |
 
 External results are reported by [Open-Jev](https://zefan-cai.github.io/open-jev/).
 TypeLLM results are from the runs documented here; model and inference settings
 differ across systems.
+
+The table below compares the model configurations of Open-Jev 27B v1.1 and
+TypeLLM. Both use Qwen3.8-27B, with different weight precision and additional
+training.
+
+| Model configuration | Open-Jev 27B v1.1 | TypeLLM (both runs) |
+|---|---|---|
+| Base model | Qwen3.8-27B | Qwen3.8-27B |
+| Weight precision | BF16 base; FP32 LoRA and decision head | NVFP4 weights; BF16 language-model head |
+| Additional training | Rank-8 LoRA + scalar decision head; base weights frozen | **None** |
+
+Sources: [Open-Jev model card](https://huggingface.co/ZefanCai/Open-Jev-27B-v1.1).
+TypeLLM uses the existing `RadixArk/Qwen3.8-27B-NVFP4-BF16-LMHead` checkpoint.
 
 [Full results and all per-task answers](evals/jevbench/README.md) · [Method and configuration](evals/jevbench/METHOD.md)
 
