@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="945" viewBox="0 0 1680 945" role="img" aria-labelledby="title description">
+  <title id="title">TypeLLM — Accuracy Benchmark</title>
+  <desc id="description">Accuracy comparison on 231 public tasks. Open-Jev 27B v1.1: 85.28%; Jev 1.13.0: 86.58%; GPT-5.6 Luna (none): 89.18%; GPT-6 Astra (low): 100.00%; TypeLLM + Qwen3.8-27B (no thinking): 84.42%; TypeLLM + Qwen3.8-27B (thinking): 98.70%. QWEN 3.8 27B NVFP4 weights.</desc>
+  <defs>
+    <radialGradient id="background" cx="50%" cy="40%" r="75%">
+      <stop offset="0" stop-color="#101012"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <style>
+      text { font-family: "DejaVu Sans Mono", "SFMono-Regular", Menlo, Consolas, monospace; fill: #f3f3f5; }
+      .muted { fill: #909099; }
+      .accent { fill: #8095ff; }
+      .row { font-size: 32px; }
+      .value { text-anchor: end; }
+      .rule { stroke: #303037; stroke-width: 2; }
+      .footnote { font-size: 22px; }
+    </style>
+  </defs>
+  <rect width="1680" height="945" fill="url(#background)"/>
+
+  <text x="90" y="92" font-size="36" font-weight="700" letter-spacing="1">TypeLLM</text>
+  <rect x="244" y="62" width="10" height="32" fill="#8095ff"/>
+  <text x="90" y="216" font-size="76" font-weight="700" letter-spacing="1">Accuracy Benchmark</text>
+  <text x="90" y="276" font-size="34" class="muted">231 public tasks from JevBench</text>
+
+  <text x="90" y="348" font-size="27" class="muted">Model</text>
+  <text x="1140" y="348" font-size="25" text-anchor="middle" class="muted">Native typed output?</text>
+  <text x="1596" y="348" font-size="27" class="muted value">Accuracy</text>
+  <path d="M82 372H1614" stroke="#41414b" stroke-width="2"/>
+
+  <g class="row">
+    <g text-anchor="middle">
+      <text x="1140" y="420">✓</text>
+      <text x="1140" y="491">✓</text>
+      <text x="1140" y="562" class="muted">✕</text>
+      <text x="1140" y="633" class="muted">✕</text>
+      <text x="1140" y="704" class="accent">✓</text>
+      <text x="1140" y="775" class="accent" font-weight="700">✓</text>
+    </g>
+    <text x="90" y="420">Open-Jev 27B v1.1</text>
+    <text x="1596" y="420" class="value">85.28%</text>
+    <text x="90" y="491">Jev 1.13.0</text>
+    <text x="1596" y="491" class="value">86.58%</text>
+    <text x="90" y="562">GPT-5.6 Luna (none)</text>
+    <text x="1596" y="562" class="value">89.18%</text>
+    <text x="90" y="633">GPT-6 Astra (low)</text>
+    <text x="1596" y="633" class="value">100.00%</text>
+    <text x="90" y="704" class="accent">TypeLLM + Qwen3.8-27B (no thinking)</text>
+    <text x="1596" y="704" class="accent value">84.42%</text>
+    <text x="90" y="775" class="accent" font-weight="700">TypeLLM + Qwen3.8-27B (thinking)</text>
+    <text x="1596" y="775" class="accent value" font-weight="700">98.70%</text>
+  </g>
+  <path class="rule" d="M82 443H1614 M82 514H1614 M82 585H1614 M82 656H1614 M82 727H1614 M82 798H1614"/>
+
+  <text x="90" y="837" class="muted footnote">TypeLLM uses the existing RadixArk/Qwen3.8-27B-NVFP4-BF16-LMHead checkpoint. No fine-tuning was applied.</text>
+</svg>

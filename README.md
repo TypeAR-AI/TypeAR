@@ -45,13 +45,7 @@ TypeLLM was inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing
 
 Evaluated on 231 public [JevBench](https://github.com/fstandhartinger/jevbench) tasks.
 
-| Evaluation / metric | Open-Jev 27B v1.1 | Jev 1.13.0 | GPT-5.6 Luna (none) | GPT-6 Astra (low) | TypeLLM + Qwen3.8-27B (no thinking) | TypeLLM + Qwen3.8-27B (thinking) |
-|---|---:|---:|---:|---:|---:|---:|
-| Original · correct / 72 | 69/72 | 71/72 | 69/72 | 72/72 | 71/72 | 72/72 |
-| Easy · correct / 48 | 48/48 | 48/48 | 48/48 | 48/48 | 48/48 | 47/48 |
-| Hard · correct / 111 | 80/111 | 81/111 | 89/111 | 111/111 | 76/111 | 109/111 |
-| **Public · correct / 231** | **197/231** | **200/231** | **206/231** | **231/231** | **195/231** | **228/231** |
-| **Public · accuracy** | **85.28%** | **86.58%** | **89.18%** | **100.00%** | **84.42%** | **98.70%** |
+![Accuracy Benchmark — 231 public tasks from JevBench](evals/jevbench/assets/accuracy-promo-svg.png)
 
 External results are reported by [Open-Jev](https://zefan-cai.github.io/open-jev/).
 TypeLLM results are from the runs documented here; model and inference settings
