@@ -1,0 +1,14 @@
+{
+  "tasks_verified": 231,
+  "raw_hashes_verified": 231,
+  "scores_replayed": 231,
+  "generate_http_calls": 462,
+  "completion_tokens": 231,
+  "thinking_disabled_verified": true,
+  "thinking_enabled_verified": false,
+  "thinking_tokens": 0,
+  "thinking_calls": 0,
+  "thinking_length_stops": 0,
+  "natural_thinking_closures": 0,
+  "correct": 195
+}

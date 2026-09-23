@@ -1,0 +1,20 @@
+{
+  "ANSWERS.md": "c9bdd0764cb95e90deee8d71d960b5a8f2931b9b89fa11a18837c575dfc52a66",
+  "METHOD.md": "0e2aacaf87fb3ccffca239ed0bcaea0bc8c22656a5190d36df9bf9c23dfde5c5",
+  "README.md": "87fad4c8f56367740c69386ef88f14f117e9752b40154f0672b4a9cd60467587",
+  "comparison.jsonl": "4bc2506348ef83733317a0ae3e5eebf0eab6e9113017ca7f2972d795ac52429c",
+  "export_results.py": "f73a48a0d996b85ceeb6be971a2788e44d5d56f9af4d7afcdd34f36c579ee3ec",
+  "infrastructure_failures.jsonl": "fb690eb338b448090579fa365db95c3c9d56a0f69ac4b8106447a1807eab9a72",
+  "interrupted_thinking2048/answers.jsonl": "e35cbfb9383ef863b281558220cfa94588c450ce10f4cf30baa3b9dbd3d72839",
+  "interrupted_thinking2048/manifest.json": "d7bfed4b7fc1f4a4b296726a7f131485a39aa29f26146a2c416cd6e665edf393",
+  "mismatches.jsonl": "b8dcaaed00bf19beceee5ba407fdfa4fa61bbd9647725960b7670dbdc76d44f2",
+  "no_thinking/answers.jsonl": "a0e2be77ebca01055ec00a056f10bf8282fb6c7913aa36d56b0a8aad6d562e92",
+  "no_thinking/local_audit.json": "cf43c0f541a2fecb8f35b0b7d7a55d98b532e8785ac1161f9330e7afc1da8370",
+  "no_thinking/manifest.json": "ce7d916e9bc5e448ceef38bca7f38e481c280af46ed3882698c6bfab34e28a08",
+  "no_thinking/summary.json": "86d9f9cc4aba6c8fe70dbe131d169e935e034f9e99d3b47c901fc72d79ca5a04",
+  "thinking/answers.jsonl": "3f7303516706ec8d0735fbe9ea3978b8b679108ef91ace5e1f461af30b602cf5",
+  "thinking/local_audit.json": "0607ab95969ee966cdce8d1f3bcfcec102f7dccd662817b9d13e6780b5505855",
+  "thinking/manifest.json": "1cce5dd508b57efaa70110fa27c45675b732dc40023daeaa57cf3aaeec9144fa",
+  "thinking/summary.json": "9a2488d95326704dbdd2979ada2582dcabe1df8474a0a086022d8016106a5786",
+  "verify.py": "70f1b8c1462dd56986fba25cb8781664e8e52d1d87f32dddb90a95ecc725e846"
+}

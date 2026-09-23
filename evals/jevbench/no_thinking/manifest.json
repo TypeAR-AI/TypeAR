@@ -1,0 +1,36 @@
+{
+  "benchmark_revision": "f8ce71361165846101d02ebc83ad44e47ae44fc3",
+  "dataset_hash": "dc3995d8ae1e2fc8e81ce38431add509eb8bb39b85aadfd0c7c32079382dde51",
+  "model": "RadixArk/Qwen3.8-27B-NVFP4-BF16-LMHead",
+  "thinking": false,
+  "permutations": 1,
+  "mode": "argmax",
+  "temperature": 1.0,
+  "concurrency": 1,
+  "candidate_order": "upstream criteria order",
+  "probability_source": "constrained_token_logprobs",
+  "dependencies": {
+    "transformers": "5.17.0",
+    "tokenizers": "0.23.2",
+    "jinja2": "3.1.6"
+  },
+  "n_exported": 231,
+  "complete": true,
+  "included_in_headline": true,
+  "source_raw_artifacts_public": false,
+  "inference_source_hashes": {
+    "TypeLLM/typellm/benchmark.py": "a49ecdd7fa18c6e743fdfca58087034cf47629a1300d20b06709f3f97672e248",
+    "TypeLLM/typellm/protocol.py": "630db48d4f321230a898236fa9a961c416e3265045dc55fdbec815a63280da04",
+    "TypeLLM/typellm/__init__.py": "c3eed9bc460480bf5eae6c5bd0fb00bc5a4f9c81e9d1068c022dce1913095bc9",
+    "TypeLLM/typellm/runtime.py": "6af76601b5ef71525b6b335a36792763e921eab1b7f206bd322bd47fd1ad8768",
+    "TypeLLM/typellm/cli.py": "00902d604f4dded3b9539fd8d6b5826b07b0aeeeda381b947e773bb4fbc9724e",
+    "TypeLLM/typellm/numeric.py": "ad0fd90115be11ee4555b6c99f39795425e9ff0e765d4191bae578039576f34c",
+    "TypeLLM/typellm/sglang.py": "8d16fda8541de34e57ba68a7842ab77f26a2c530e6a2ab6bf6696165905d4317",
+    "TypeLLM/typellm/__main__.py": "3129adff95e0f38b87ab34cddfc27082c7892bcaec267ff5d40f160fdf55b44a",
+    "TypeLLM/typellm/schema.py": "43b3cc67e3aa91b9d3ebd50d41fefaba03a1a8db5e113651826a67e541c9bb94",
+    "jev-compat/jev_compat/translate.py": "a628512c121c3404ad5d624ffe8cc789a178afb5ddbc4072370809cbc69fa225",
+    "jev-compat/jev_compat/server.py": "e128b1862b51769067adabbe9ddb0a49b8eb3af0b8e7637fd18bf7bcb9e4b97d",
+    "jev-compat/jev_compat/__init__.py": "65dd4de3f7e01378d28e487ee4886d48a9babd9614a8652299fb980bb604c592",
+    "jev-compat/jev_compat/answers.py": "1d2b42bb3e4831a5435ff98d976611290f20651b7e48be12f00fa0ce93a80816"
+  }
+}

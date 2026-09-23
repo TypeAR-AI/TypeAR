@@ -15,6 +15,7 @@
 
 ### Updates
 
+- **[2026/09/23]** Added [JevBench public-subset results and all per-task answers](evals/jevbench/README.md): TypeLLM scored 195/231 without thinking and 228/231 with thinking and no explicit token budget. Includes probabilities and paired comparisons.
 - **[2026/09/23]** Added [permutation averaging](#per-question-permutation-averaging) to improve the predictive distribution. See the [blog post](https://typellm.ai/blog/fair-die) for details.
 - **[2026/09/22]** Added `depends_on` dependency graphs with incremental prefix reuse.
 - **[2026/09/19]** Added optional [thinking mode](#thinking-mode) with a per-field budget.
@@ -39,6 +40,26 @@ TypeLLM was inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing
 5. **Made for open autoregressive LLMs** — Use compatible models you already serve with SGLang.
 6. **Supports thinking mode** — Enable reasoning before the final constrained answer.
 7. **Permutation averaging** — Reduce option-order bias on explicit enum questions with sampled or exhaustive orderings. See the [docs](https://typellm.ai/docs/probabilities#permutation-averaging).
+
+## JevBench results
+
+Evaluated on 231 public JevBench decisions.
+
+| Evaluation / metric | Open-Jev 27B v1.1 | Jev 1.13.0 | GPT-5.6 Luna (none) | GPT-6 Astra (low) | TypeLLM + Qwen3.8-27B (no thinking) | TypeLLM + Qwen3.8-27B (thinking) |
+|---|---:|---:|---:|---:|---:|---:|
+| **JevBench public · correct / 231** | **197/231 · 85.28%** | **200/231 · 86.58%** | **206/231 · 89.18%** | **231/231 · 100.00%** | **195/231 · 84.42%** | **228/231 · 98.70%** |
+| JevBench original · correct / 72 | 69/72 | 71/72 | 69/72 | 72/72 | 71/72 | 72/72 |
+| JevBench easy · correct / 48 | 48/48 | 48/48 | 48/48 | 48/48 | 48/48 | 47/48 |
+| JevBench hard · correct / 111 | 80/111 | 81/111 | 89/111 | 111/111 | 76/111 | 109/111 |
+
+Both TypeLLM runs use **Qwen3.8-27B**, checkpoint
+`RadixArk/Qwen3.8-27B-NVFP4-BF16-LMHead` (NVFP4 weights, BF16 language-model head).
+
+External results are reported by [Open-Jev](https://zefan-cai.github.io/open-jev/).
+TypeLLM results are from the runs documented here; model and inference settings
+differ across systems.
+
+[Full results and all per-task answers](evals/jevbench/README.md) · [Method and configuration](evals/jevbench/METHOD.md)
 
 ## Quick start
 
