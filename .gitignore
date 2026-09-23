@@ -13,3 +13,8 @@ checkpoints/
 wandb/
 _vizdoom.ini
 
+
+# Examples still in local development
+/examples/bayes_net/
+/examples/doom/
+/examples/sql/

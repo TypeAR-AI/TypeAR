@@ -1,0 +1,66 @@
+{
+  "question": "what number will come up on a single roll of a fair six-sided die?",
+  "context": "A single roll of a fair die.",
+  "model": "qwen3.8-27b",
+  "tokenizer": "RadixArk/Qwen3.8-27B-NVFP4-BF16-LMHead",
+  "seed": 42,
+  "thinking": false,
+  "execution": "batch",
+  "mode": "argmax",
+  "temperature": 1.0,
+  "ground_truth": {
+    "one": 0.16666666666666666,
+    "two": 0.16666666666666666,
+    "three": 0.16666666666666666,
+    "four": 0.16666666666666666,
+    "five": 0.16666666666666666,
+    "six": 0.16666666666666666
+  },
+  "runs": {
+    "1": {
+      "answer": {
+        "value": "one",
+        "probabilities": {
+          "one": 0.7597083751872158,
+          "two": 0.017866630622202773,
+          "three": 0.1320175359663285,
+          "four": 0.06236066836577753,
+          "five": 0.01576724618371703,
+          "six": 0.012279543674758444
+        }
+      },
+      "kl_uniform_to_prediction": 1.1497277342963759,
+      "seconds": 16.724866458098404
+    },
+    "8": {
+      "answer": {
+        "value": "one",
+        "probabilities": {
+          "one": 0.41361996508933957,
+          "two": 0.20071699487520098,
+          "three": 0.17885328344475582,
+          "four": 0.03966027796491717,
+          "five": 0.0224883146067488,
+          "six": 0.1446611640190376
+        }
+      },
+      "kl_uniform_to_prediction": 0.4024708912278044,
+      "seconds": 1.5814195410348475
+    },
+    "all": {
+      "answer": {
+        "value": "one",
+        "probabilities": {
+          "one": 0.2707568400270381,
+          "two": 0.13832415833706518,
+          "three": 0.14758506071035044,
+          "four": 0.13832016860772803,
+          "five": 0.1323622821861468,
+          "six": 0.17265149013167144
+        }
+      },
+      "kl_uniform_to_prediction": 0.03406004550356933,
+      "seconds": 10.912402625079267
+    }
+  }
+}

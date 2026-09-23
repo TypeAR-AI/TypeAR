@@ -7,7 +7,8 @@ import logging
 import math
 import os
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from itertools import permutations as all_permutations
 from string import ascii_uppercase, digits
 from typing import Any, Mapping, Sequence
 
@@ -36,6 +37,7 @@ class Choice:
     maximum: int | float | None = None
     text_type: bool = False
     max_length: int | None = None
+    permutations: int | str = 1
     return_probabilities: bool = False
     depends_on: tuple[str, ...] | None = None
 
@@ -193,6 +195,7 @@ class TypeLLMClient:
                     maximum=item.maximum,
                     text_type=item.text_type,
                     max_length=item.max_length,
+                    permutations=item.permutations,
                     return_probabilities=item.return_probabilities,
                     depends_on=item.depends_on,
                 )
@@ -587,6 +590,49 @@ def _decode_numeric(
         step += 1
 
 
+def _choice_orderings(decision, rng):
+    """Rebind values to fixed control labels, sampling ranks without enumeration."""
+    labels = list(decision.choices)
+    values = list(decision.choices.values())
+    total = math.factorial(len(values))
+    count = total if decision.permutations == "all" else min(decision.permutations, total)
+    if count == 1:
+        return [(decision, tuple(range(len(values))))]
+    if count == total:
+        orders = all_permutations(range(len(values)))
+    else:
+        # Rejection sampling of integer ranks avoids materializing K! orders,
+        # including when K! exceeds the platform's range length limit.
+        ranks = set()
+        ordered_ranks = []
+        while len(ranks) < count:
+            rank = rng.randrange(total)
+            if rank not in ranks:
+                ranks.add(rank)
+                ordered_ranks.append(rank)
+        orders = []
+        for rank in ordered_ranks:
+            available = list(range(len(values)))
+            order = []
+            while available:
+                index, rank = divmod(rank, math.factorial(len(available) - 1))
+                order.append(available.pop(index))
+            orders.append(tuple(order))
+    return [(replace(decision, choices=dict(zip(labels, (values[i] for i in order))),
+                     permutations=1), order) for order in orders]
+
+
+def _mean_order_probabilities(scored, orders, label_tokens, temperature):
+    labels = list(label_tokens)
+    aligned = {label: [] for label in labels}
+    for (by_id, _meta), (_variant, order) in zip(scored, orders):
+        probs = candidate_softmax({label: by_id[token_id]
+                                  for label, (token_id, _) in label_tokens.items()}, temperature)
+        for position, original_index in enumerate(order):
+            aligned[labels[original_index]].append(probs[labels[position]])
+    return {label: math.fsum(values) / len(scored) for label, values in aligned.items()}
+
+
 def _execute_decisions(
     client: SGLangClient,
     context: str,
@@ -647,18 +693,26 @@ def _execute_decisions(
             {label: token_id for label, (token_id, _) in label_tokens.items()},
         )
 
-        by_id, meta, elapsed = client.score_candidates(prefix, ids)
-        raw = {
-            label: by_id[token_id]
-            for label, (token_id, _) in label_tokens.items()
-        }
         probability_temperature = temperature if mode == "sample" else 1.0
-        probabilities = candidate_softmax(raw, probability_temperature)
-        selected = (
-            max(raw, key=raw.__getitem__)
-            if mode == "argmax"
-            else _sample(probabilities, rng)
-        )
+        if decision.permutations != 1:
+            orders = _choice_orderings(decision, rng)
+            variant_prompts = []
+            for variant, _order in orders:
+                content = variant.opening_text()
+                if index == 0:
+                    content = context.rstrip() + "\n\n" + content
+                variant_prompts.append(client.render_chat(
+                    messages[:-1] + [{"role": "user", "content": content}],
+                    add_generation_prompt=True))
+            scored, elapsed = client.score_candidates_batch(variant_prompts, [ids] * len(orders))
+            probabilities = _mean_order_probabilities(scored, orders, label_tokens, probability_temperature)
+            raw, meta = None, {}
+        else:
+            by_id, meta, elapsed = client.score_candidates(prefix, ids)
+            raw = {label: by_id[token_id] for label, (token_id, _) in label_tokens.items()}
+            probabilities = candidate_softmax(raw, probability_temperature)
+        selected = (max(probabilities, key=probabilities.__getitem__)
+                    if mode == "argmax" else _sample(probabilities, rng))
         selected_text = label_tokens[selected][1]
         semantic_value = decision.choices[selected]
 
@@ -760,6 +814,9 @@ def _execute_batch_decisions(
     label_tokens_by_decision: list[dict[str, tuple[int, str]]] = []
     candidate_ids: list[list[int]] = []
     prompts: list[str] = []
+    scoring_prompts = []
+    scoring_ids = []
+    ordering_groups = []
 
     # Warm each distinct parent once before siblings, including thinking/text
     # requests. Root context is warmed only in the first DAG layer.
@@ -813,6 +870,17 @@ def _execute_batch_decisions(
             raise ValueError(f"Decision {index} has labels with duplicate token IDs: {ids}")
         label_tokens_by_decision.append(label_tokens)
         candidate_ids.append(ids)
+        orders = _choice_orderings(decision, rng)
+        ordering_groups.append(orders)
+        for variant, _order in orders:
+            variant_content = question_content(variant)
+            variant_prompt = (prompt if variant.choices == decision.choices else
+                              client.extend_chat_prefix(parent, variant_content)
+                              if parent is not None else client.render_chat(
+                                  shared_messages + [{"role": "user", "content": variant_content}],
+                                  add_generation_prompt=True))
+            scoring_prompts.append(variant_prompt)
+            scoring_ids.append(ids)
         prompts.append(prompt)
         finite_indexes.append(index)
         LOG.info(
@@ -840,7 +908,13 @@ def _execute_batch_decisions(
         if not incremental:
             cache_meta = client.cache_prefix(shared_prefix)
             LOG.info("batch_shared_prefix_cached_tokens=%s", cache_meta.get("cached_tokens"))
-        scored, elapsed = client.score_candidates_batch(prompts, candidate_ids)
+        scored, elapsed = client.score_candidates_batch(scoring_prompts, scoring_ids)
+        grouped_scores = []
+        offset = 0
+        for orders in ordering_groups:
+            grouped_scores.append(scored[offset:offset + len(orders)])
+            offset += len(orders)
+        scored = [group[0] for group in grouped_scores]
     else:
         scored, elapsed = [], 0.0
 
@@ -856,9 +930,11 @@ def _execute_batch_decisions(
             for label, (token_id, _) in label_tokens.items()
         }
         probability_temperature = temperature if mode == "sample" else 1.0
-        probabilities = candidate_softmax(raw, probability_temperature)
+        probabilities = _mean_order_probabilities(
+            grouped_scores[finite_index], ordering_groups[finite_index],
+            label_tokens, probability_temperature)
         selected = (
-            max(raw, key=raw.__getitem__)
+            max(probabilities, key=probabilities.__getitem__)
             if mode == "argmax"
             else _sample(probabilities, rng)
         )

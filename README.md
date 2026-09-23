@@ -6,7 +6,7 @@
 
 <h4 align="center">
   <a href="https://typellm.ai/">Homepage</a>&nbsp; • &nbsp;
-  <a href="https://typellm.ai/blog/introducing-typellm">Blog</a>&nbsp; • &nbsp;
+  <a href="https://typellm.ai/blog">Blog</a>&nbsp; • &nbsp;
   <a href="https://typellm.ai/docs">Docs</a>&nbsp; • &nbsp;
   <a href="https://typellm.ai/early-access">Early Access</a>&nbsp; • &nbsp;
   <a href="https://typellm.ai/contact">Contact</a>&nbsp;
@@ -15,6 +15,7 @@
 
 ### Updates
 
+- **[2026/09/23]** Added per-enum [permutation averaging](#per-question-permutation-averaging) with sampled or exhaustive orderings. See the [blog post](https://typellm.ai/blog/fair-die) for details.
 - **[2026/09/22]** Added `depends_on` dependency graphs with incremental prefix reuse.
 - **[2026/09/19]** Added optional [thinking mode](#thinking-mode) with a per-field budget.
 - **[2026/09/18]** Added constrained `integer` and `number` outputs.
@@ -37,6 +38,7 @@ TypeLLM was inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing
 4. **Dependency-aware execution** — Run decisions sequentially, batch independent fields, or declare `depends_on` to form a dependency graph.
 5. **Made for open autoregressive LLMs** — Use compatible models you already serve with SGLang.
 6. **Supports thinking mode** — Enable reasoning before the final constrained answer.
+7. **Permutation averaging** — Reduce option-order bias on explicit enum questions with sampled or exhaustive orderings. See the [docs](https://typellm.ai/docs/probabilities#permutation-averaging).
 
 ## Quick start
 
@@ -337,6 +339,27 @@ result = client.generate(
 
 Only opted-in fields return `value` and `probabilities`; other fields return plain values.
 The option is not supported on open Numeric or Text fields.
+
+### Per-question permutation averaging
+
+Add `permutations` to an `enum` question to reduce option-order bias. TypeLLM averages the probabilities and keeps the same return format.
+
+```python
+result = client.generate(
+    context="A single roll of a fair die.",
+    questions={"roll": {
+        "type": "string",
+        "enum": ["one", "two", "three", "four", "five", "six"],
+        "instructions": "What number will come up on this roll?",
+        "permutations": 8,
+        "return_probabilities": True,
+    }},
+)
+```
+
+Use `8` for eight distinct orderings or `"all"` for every ordering (up to 720). Omit it or use `1` to keep the original behavior. Only explicit `enum` fields support this option.
+
+[Docs](https://typellm.ai/docs/probabilities#permutation-averaging) · [Read the blog](https://typellm.ai/blog/fair-die)
 
 Argmax is the default. To enable sampling:
 

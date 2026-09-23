@@ -8,6 +8,7 @@ from typing import Any, Mapping, Sequence
 
 
 MAX_ENUM_CHOICES = 24
+MAX_PERMUTATIONS = 720
 
 
 class SchemaError(ValueError):
@@ -27,6 +28,7 @@ class Decision:
     maximum: int | float | None = None
     text_type: bool = False
     max_length: int | None = None
+    permutations: int | str = 1
     return_probabilities: bool = False
     depends_on: tuple[str, ...] | None = None
 
@@ -98,6 +100,17 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
 
         field_type = field.get("type")
         enum = field.get("enum")
+        permutations = field.get("permutations", 1)
+        if "permutations" in field:
+            if enum is None:
+                raise SchemaError(f"permutations for {name!r} requires an explicit enum")
+            if not (permutations == "all" or type(permutations) is int and permutations > 0):
+                raise SchemaError(f"permutations for {name!r} must be a positive integer or 'all'")
+            if isinstance(enum, list):
+                count = math.factorial(len(enum))
+                budget = count if permutations == "all" else min(permutations, count)
+                if budget > MAX_PERMUTATIONS:
+                    raise SchemaError(f"permutations for {name!r} exceeds {MAX_PERMUTATIONS}; use a smaller integer budget")
         return_probabilities = field.get("return_probabilities", False)
         if type(return_probabilities) is not bool:
             raise SchemaError(f"return_probabilities for {name!r} must be a boolean")
@@ -190,7 +203,7 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
         if _has_duplicates(values):
             raise SchemaError(f"enum for {name!r} contains duplicate values")
         decisions.append(
-            Decision(name, question, tuple(values), syntax, return_probabilities=return_probabilities)
+            Decision(name, question, tuple(values), syntax, return_probabilities=return_probabilities, permutations=permutations)
         )
 
     compiled = []
