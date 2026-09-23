@@ -15,7 +15,7 @@
 
 ### Updates
 
-- **[2026/09/23]** Added per-enum [permutation averaging](#per-question-permutation-averaging) with sampled or exhaustive orderings. See the [blog post](https://typellm.ai/blog/fair-die) for details.
+- **[2026/09/23]** Added [permutation averaging](#per-question-permutation-averaging) to improve the predictive distribution. See the [blog post](https://typellm.ai/blog/fair-die) for details.
 - **[2026/09/22]** Added `depends_on` dependency graphs with incremental prefix reuse.
 - **[2026/09/19]** Added optional [thinking mode](#thinking-mode) with a per-field budget.
 - **[2026/09/18]** Added constrained `integer` and `number` outputs.
