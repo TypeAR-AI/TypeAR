@@ -18,8 +18,9 @@
   </defs>
   <rect width="1680" height="945" fill="url(#background)"/>
 
-  <text x="90" y="92" font-size="36" font-weight="700" letter-spacing="1">TypeLLM</text>
-  <rect x="244" y="62" width="10" height="32" fill="#8095ff"/>
+  <!-- Website wordmark at 2x scale; see typear-site/app/globals.css. -->
+  <text x="90" y="92" font-size="36" font-weight="600" letter-spacing="-0.72" style="font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace; fill: #ececec;">TypeLLM</text>
+  <rect x="242.44" y="65.684" width="12.42" height="26.316" fill="#7f9bff"/>
   <text x="90" y="216" font-size="76" font-weight="700" letter-spacing="1">Accuracy Benchmark</text>
   <text x="90" y="276" font-size="34" class="muted">231 public tasks from JevBench</text>
 
