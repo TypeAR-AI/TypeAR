@@ -24,7 +24,7 @@
   <text x="90" y="276" font-size="34" class="muted">231 public tasks from JevBench</text>
 
   <text x="90" y="348" font-size="27" class="muted">Model</text>
-  <text x="1140" y="348" font-size="25" text-anchor="middle" class="muted">Native typed output?</text>
+  <text x="1140" y="348" font-size="25" text-anchor="middle" class="muted">Type-safe output</text>
   <text x="1596" y="348" font-size="27" class="muted value">Accuracy</text>
   <path d="M82 372H1614" stroke="#41414b" stroke-width="2"/>
 
