@@ -15,9 +15,9 @@
 
 ### Updates
 
-- **[2026/09/23]** Added [JevBench public-subset results and all per-task answers](evals/jevbench/README.md): TypeLLM scored 195/231 without thinking and 228/231 with thinking and no explicit token budget. Includes probabilities and paired comparisons.
-- **[2026/09/23]** Added [permutation averaging](#per-question-permutation-averaging) to improve the predictive distribution. See the [blog post](https://typellm.ai/blog/fair-die) for details.
-- **[2026/09/22]** Added `depends_on` dependency graphs with incremental prefix reuse.
+- **[2026/09/23]** Added [JevBench results](evals/jevbench/README.md): TypeLLM scored 195/231 without thinking and 228/231 with thinking.
+- **[2026/09/23]** Added [permutation averaging](#per-question-permutation-averaging) to improve the predictive distribution. See the [blog post](https://typellm.ai/blog/fair-die).
+- **[2026/09/22]** Added `depends_on` dependency graphs with incremental prefix reuse. See the [blog post](https://typellm.ai/blog/type-safe-workflow)
 - **[2026/09/19]** Added optional [thinking mode](#thinking-mode) with a per-field budget.
 - **[2026/09/18]** Added constrained `integer` and `number` outputs.
 
