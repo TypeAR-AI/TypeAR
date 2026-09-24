@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import random
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from itertools import permutations as all_permutations
 from string import ascii_uppercase, digits
@@ -18,10 +19,18 @@ from .schema import (
     compile_json_schema,
     dependency_layers,
 )
+from .images import encode_images
 from .sglang import SGLangClient
 
 
 LOG = logging.getLogger("typellm")
+
+
+def _user_content(text: str, image_count: int) -> str | list[dict[str, str]]:
+    """Put images ahead of the text in the first user turn."""
+    if not image_count:
+        return text
+    return [{"type": "image"}] * image_count + [{"type": "text", "text": text}]
 
 
 @dataclass(frozen=True)
@@ -286,6 +295,7 @@ class TypeLLMClient:
         state: str | None = None,
         schema: Mapping[str, Any] | None = None,
         questions: Mapping[str, Any] | None = None,
+        images: Sequence[Any] | None = None,
         mode: str | None = None,
         execution: str | None = None,
         temperature: float | None = None,
@@ -296,6 +306,7 @@ class TypeLLMClient:
         context = state if state is not None else context
         if not isinstance(context, str):
             raise ValueError("context or state must be a string")
+        encoded_images = encode_images(images) if images is not None else ()
         if (schema is None) == (questions is None):
             raise SchemaError("provide exactly one of questions or schema")
         if questions is not None:
@@ -313,34 +324,39 @@ class TypeLLMClient:
             active_execution = "dag" if has_dependencies else "batch"
         if has_dependencies and active_execution != "dag":
             raise SchemaError("depends_on requires execution='auto' or 'dag'")
-        if active_execution == "dag":
-            rows, self.last_prompts = _execute_dependency_decisions(
-                self.sglang, context, decisions, active_mode,
-                active_temperature, self.rng, self.numeric_max_digits,
-            )
-            self.last_prompt = None
-        elif active_execution == "sequential":
-            rows, self.last_prompt = _execute_decisions(
-                self.sglang,
-                context,
-                decisions,
-                active_mode,
-                active_temperature,
-                self.rng,
-                self.numeric_max_digits,
-            )
-            self.last_prompts = [self.last_prompt]
-        else:
-            rows, self.last_prompts = _execute_batch_decisions(
-                self.sglang,
-                context,
-                decisions,
-                active_mode,
-                active_temperature,
-                self.rng,
-                self.numeric_max_digits,
-            )
-            self.last_prompt = None
+        attach = self.sglang.images(encoded_images) if encoded_images else nullcontext()
+        with attach:
+            if active_execution == "dag":
+                rows, self.last_prompts = _execute_dependency_decisions(
+                    self.sglang, context, decisions, active_mode,
+                    active_temperature, self.rng, self.numeric_max_digits,
+                    image_count=len(encoded_images),
+                )
+                self.last_prompt = None
+            elif active_execution == "sequential":
+                rows, self.last_prompt = _execute_decisions(
+                    self.sglang,
+                    context,
+                    decisions,
+                    active_mode,
+                    active_temperature,
+                    self.rng,
+                    self.numeric_max_digits,
+                    image_count=len(encoded_images),
+                )
+                self.last_prompts = [self.last_prompt]
+            else:
+                rows, self.last_prompts = _execute_batch_decisions(
+                    self.sglang,
+                    context,
+                    decisions,
+                    active_mode,
+                    active_temperature,
+                    self.rng,
+                    self.numeric_max_digits,
+                    image_count=len(encoded_images),
+                )
+                self.last_prompt = None
 
         output: dict[str, Any] = {}
         for decision, row in zip(decisions, rows):
@@ -641,15 +657,16 @@ def _execute_decisions(
     temperature: float,
     rng: random.Random,
     numeric_max_digits: int = 32,
+    image_count: int = 0,
 ) -> tuple[list[dict], str]:
-    messages: list[dict[str, str]] = []
+    messages: list[dict[str, Any]] = []
     prefix = ""
     results: list[dict] = []
 
     for index, decision in enumerate(decisions):
         user_content = decision.opening_text()
         if index == 0:
-            user_content = context.rstrip() + "\n\n" + user_content
+            user_content = _user_content(context.rstrip() + "\n\n" + user_content, image_count)
         messages.append({"role": "user", "content": user_content})
         prefix = client.render_chat(messages, add_generation_prompt=True)
         if decision.text_type:
@@ -745,6 +762,7 @@ def _execute_decisions(
 
 def _execute_dependency_decisions(
     client, context, decisions, mode, temperature, rng, numeric_max_digits,
+    image_count=0,
 ):
     rows_by_name = {}
     prompts_by_name = {}
@@ -771,6 +789,7 @@ def _execute_dependency_decisions(
             client, context, layer, mode, temperature, rng, numeric_max_digits,
             dependency_values=dependency_values,
             parent_prefixes=parent_prefixes,
+            image_count=image_count,
         )
         for decision, row, prompt in zip(layer, rows, prompts):
             rows_by_name[decision.name] = row
@@ -789,6 +808,7 @@ def _execute_batch_decisions(
     numeric_max_digits: int = 32,
     dependency_values: Mapping[str, Mapping[str, Any]] | None = None,
     parent_prefixes: Mapping[str, str] | None = None,
+    image_count: int = 0,
 ) -> tuple[list[dict], list[str]]:
     def question_content(decision):
         content = decision.opening_text()
@@ -807,7 +827,7 @@ def _execute_batch_decisions(
             add_generation_prompt=False,
         )
 
-    shared_messages = [{"role": "user", "content": context.rstrip()}]
+    shared_messages = [{"role": "user", "content": _user_content(context.rstrip(), image_count)}]
     shared_prefix = client.render_chat(
         shared_messages, add_generation_prompt=False
     )
@@ -1048,6 +1068,7 @@ def run_schema(
     *,
     state: str | None = None,
     questions: Mapping[str, Any] | None = None,
+    images: Sequence[Any] | None = None,
     execution: str = "auto",
     base_url: str | None = None,
     model: str | None = None,
@@ -1079,5 +1100,6 @@ def run_schema(
         state=state,
         schema=schema,
         questions=questions,
+        images=images,
         print_final_prompt=print_final_prompt,
     )

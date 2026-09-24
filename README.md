@@ -15,6 +15,7 @@
 
 ### Updates
 
+- **[2026/09/24]** Added [image input](#image-input) for vision-language models, tested with Qwen3.8-27B.
 - **[2026/09/23]** Added [JevBench results](evals/jevbench/README.md): TypeLLM scored 195/231 without thinking and 228/231 with thinking.
 - **[2026/09/23]** Added [permutation averaging](#per-question-permutation-averaging) to improve the predictive distribution. See the [blog post](https://typellm.ai/blog/fair-die).
 - **[2026/09/22]** Added `depends_on` dependency graphs with incremental prefix reuse. See the [blog post](https://typellm.ai/blog/type-safe-workflow).
@@ -39,7 +40,8 @@ TypeLLM was inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing
 4. **Dependency-aware execution** — Run decisions sequentially, batch independent fields, or declare `depends_on` to form a dependency graph.
 5. **Made for open autoregressive LLMs** — Use compatible models you already serve with SGLang.
 6. **Supports thinking mode** — Enable reasoning before the final constrained answer.
-7. **Permutation averaging** — Reduce option-order bias on explicit enum questions with sampled or exhaustive orderings. See the [docs](https://typellm.ai/docs/probabilities#permutation-averaging).
+7. **Image input** — Pass images to vision-language models alongside the text context. See [Image input](#image-input).
+8. **Permutation averaging** — Reduce option-order bias on explicit enum questions with sampled or exhaustive orderings. See the [docs](https://typellm.ai/docs/probabilities#permutation-averaging).
 
 ## JevBench results
 
@@ -217,6 +219,32 @@ answer. Empty unfinished reasoning and unrecognized stops raise an error.
 
 Models with always-on thinking still reason with `thinking=False`;
 `thinking_budget` applies to them too. See [Supported models](#supported-models).
+
+## Image input
+
+Pass images with `images=` alongside the text context. The served model must be
+a vision-language model, such as `Qwen/Qwen3.8-27B`.
+
+```python
+result = client.generate(
+    context="The customer says this receipt was charged twice.",
+    images=["receipt.png"],
+    questions={
+        "total": {"type": "number", "instructions": "What is the receipt total?"},
+        "paid": {"type": "boolean", "instructions": "Is the receipt marked as paid?"},
+    },
+)
+```
+
+Each image can be a local file path, an http(s) URL, a `data:` URI, raw bytes,
+or a PIL image. Local files are read by the client, so the SGLang server does
+not need access to your filesystem. Images come before the text in the first
+user turn, and every request in the call carries them, across batch,
+sequential and DAG execution, permutations and thinking.
+
+TypeLLM reads the image placeholder from the model's chat template. If the
+template does not render image content, `generate()` raises an error before
+sending any request.
 
 ## Dependency-aware execution
 
@@ -431,6 +459,8 @@ server.
 
 Other sizes in the Qwen3.5 and Qwen3.8 families are expected to be compatible.
 
+[Image input](#image-input) has been tested with `Qwen/Qwen3.8-27B`.
+
 The MiniCPM5, Ling and Ring runs used an RTX PRO 6000 Blackwell and
 SGLang 0.5.19 on 2026-09-22.
 
@@ -448,6 +478,7 @@ The tokenizer must load from standard artifacts without custom model code.
 | integer/decimal type | ✓ | — | — | — | — |
 | string type | ✓ | — | — | — | — |
 | Enable Thinking | ✓ | — | — | — | — |
+| Image input | ✓ | Not documented | — | Not documented | — |
 | Multi-field execution | Batch, sequential, DAG | Batch | Batch | Batch | Batch |
 | Built-in field dependency graph | ✓ | — | — | — | — |
 | KV prefix reuse | Shared context + dependency paths | Not disclosed | Shared context | Not documented | Not applicable |

@@ -1,0 +1,19 @@
+{
+  "date": "2026-09-24",
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+  "model": "RadixArk/Qwen3.8-27B-NVFP4-BF16-LMHead",
+  "served_model_name": "qwen3.8-27b",
+  "thinking": false,
+  "smoke_test": [
+    {"execution": "batch", "values": {"item": "notebooks", "quantity": 3, "total": 12.5, "paid": true}, "passed": true},
+    {"execution": "sequential", "values": {"item": "notebooks", "quantity": 3, "total": 12.5, "paid": true}, "passed": true},
+    {"execution": "dag", "values": {"item": "notebooks", "quantity": 3, "total": 12.5, "paid": true, "check": true}, "passed": true}
+  ],
+  "controls": {
+    "receipt_b_5_coffee_7_25_unpaid": {"item": "coffee", "p_item": 0.99985, "quantity": 5, "total": 7.25, "paid": false},
+    "no_image": {"item": "notebooks", "p_item": 0.506, "quantity": 0, "total": 0.0, "paid": false},
+    "two_images_ask_second": {"item": "coffee", "quantity": 5, "total": 7.25, "paid": false},
+    "receipt_b_thinking_budget_512": {"item": "coffee", "quantity": 5, "total": 7.25, "paid": false}
+  },
+  "prefix_cache": "Image prompt 245 tokens, 192 cached on repeat; text-only 172 tokens, 128 cached. Both reuse in 64-token steps on this hybrid model."
+}

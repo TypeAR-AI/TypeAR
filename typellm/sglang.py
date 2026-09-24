@@ -9,7 +9,9 @@ import os
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import Any, Iterator, Mapping, Sequence
 
 from .numeric import load_numeric_token_table
 from .protocol import detect_protocol
@@ -55,6 +57,11 @@ class SGLangClient:
         self._model_info_cache: Mapping[str, Any] | None = None
         self._numeric_tokens: list[tuple[int, str]] | None = None
         self._chat_tokenizer: Any | None = None
+        self._image_placeholder_cache: str | None = None
+        # Per-thread/task, so concurrent generate() calls never share images.
+        self._active_images: ContextVar[tuple[str, ...]] = ContextVar(
+            f"typellm_images_{id(self)}", default=()
+        )
 
     def _info(self, name: str) -> Any:
         # SGLang 0.5.6 renamed /get_<name> to /<name>; older servers and
@@ -115,6 +122,69 @@ class SGLangClient:
             raise SGLangError(
                 f"SGLang {path} returned non-JSON data: {raw[:500]}"
             ) from exc
+
+    @contextmanager
+    def images(self, images: Sequence[str]) -> Iterator[None]:
+        """Attach encoded images to every /generate request made in this block."""
+        images = tuple(images)
+        if images:
+            self.image_placeholder()  # Fail before any request if unsupported.
+        token = self._active_images.set(images)
+        try:
+            yield
+        finally:
+            self._active_images.reset(token)
+
+    def image_placeholder(self) -> str:
+        """Return the text the chat template writes for one image."""
+        if self._image_placeholder_cache is not None:
+            return self._image_placeholder_cache
+        # Derive the placeholder from the template, never hardcode a model's
+        # vision tokens. The marker is confined to this local template probe.
+        marker = "TYPELLM_IMAGE_BOUNDARY_3f1d7a"
+        unsupported = (
+            "The served chat template does not render image content; "
+            "use a vision-language model to pass images"
+        )
+        text_only = self.render_chat(
+            [{"role": "user", "content": marker}], add_generation_prompt=False
+        )
+        try:
+            with_image = self.render_chat(
+                [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": marker}]}],
+                add_generation_prompt=False,
+            )
+        except SGLangError as exc:
+            raise SGLangError(unsupported) from exc
+        if text_only.count(marker) != 1 or with_image.count(marker) != 1:
+            raise SGLangError(unsupported)
+        before, after = text_only.split(marker)
+        image_before, image_after = with_image.split(marker)
+        if not image_before.startswith(before) or image_after != after:
+            raise SGLangError(unsupported)
+        placeholder = image_before[len(before):].strip()
+        if not placeholder:
+            raise SGLangError(unsupported)
+        self._image_placeholder_cache = placeholder
+        return placeholder
+
+    def _generate(self, payload: Mapping[str, Any]) -> Any:
+        """POST /generate, adding the active images to each prompt."""
+        images = self._active_images.get()
+        if not images:
+            return self._request("/generate", payload)
+        text = payload["text"]
+        prompts = [text] if isinstance(text, str) else list(text)
+        placeholder = self.image_placeholder()
+        for prompt in prompts:
+            found = prompt.count(placeholder)
+            if found != len(images):
+                raise SGLangError(
+                    f"Prompt contains {found} image placeholders for {len(images)} images; "
+                    "the context text must not contain the model's image tokens"
+                )
+        image_data = list(images) if isinstance(text, str) else [list(images) for _ in prompts]
+        return self._request("/generate", {**payload, "image_data": image_data})
 
     def _tokenizer_model(self) -> str:
         if self.model:
@@ -283,13 +353,22 @@ class SGLangClient:
             )
         forced_end = protocol.forced_close()
         prefix_tokens = len(tokenizer.encode(prefix, add_special_tokens=False))
+        image_tokens = 0
+        if self._active_images.get():
+            # Each image placeholder expands to many tokens on the server, so
+            # count the prompt there; the prefill also warms the cache.
+            served = self.cache_prefix(prefix).get("prompt_tokens")
+            if type(served) is not int:
+                raise SGLangError("SGLang did not report prompt_tokens; cannot budget thinking with images")
+            image_tokens = max(0, served - prefix_tokens)
+            prefix_tokens += image_tokens
         closing_tokens = len(tokenizer.encode(forced_end, add_special_tokens=False))
         # This is available context, not an independent default thinking budget.
         available = self._context_length() - prefix_tokens - self.answer_reserve_tokens - closing_tokens - 16
         if available <= 0:
             raise SGLangError("Input leaves no room for thinking and the final constrained answer")
         limit = available if self.thinking_budget is None else min(available, self.thinking_budget)
-        response = self._request("/generate", {
+        response = self._generate({
             "text": prefix,
             "sampling_params": {
                 "max_new_tokens": limit,
@@ -326,7 +405,7 @@ class SGLangClient:
                 raise SGLangError(f"Thinking ended without a closing {protocol.thinking_close} marker; no typed result returned")
             completed = protocol.answer_prefix(prefix, text + "\n\nI will now give the final answer.\n")
             # Guard tokenizer/count mismatches before issuing a final request.
-            if len(tokenizer.encode(completed, add_special_tokens=False)) + self.answer_reserve_tokens > self._context_length():
+            if len(tokenizer.encode(completed, add_special_tokens=False)) + image_tokens + self.answer_reserve_tokens > self._context_length():
                 raise SGLangError("Thinking response exceeded the reserved context space")
             logging.getLogger("typellm").info(
                 "Thinking %s; closing reasoning before constrained decoding",
@@ -399,7 +478,7 @@ class SGLangClient:
             "return_text_in_logprobs": True,
         }
         start = time.perf_counter()
-        response = self._request("/generate", payload)
+        response = self._generate(payload)
         elapsed = time.perf_counter() - start
         # The unrestricted generated token is deliberately ignored. Decisions
         # use only the explicitly requested candidate-token log probabilities.
@@ -409,8 +488,7 @@ class SGLangClient:
 
     def cache_prefix(self, prefix: str) -> Mapping[str, Any]:
         """Prefill a shared prefix without generating an output token."""
-        response = self._request(
-            "/generate",
+        response = self._generate(
             {
                 "text": prefix,
                 "sampling_params": {"max_new_tokens": 0, "temperature": 0},
@@ -448,7 +526,7 @@ class SGLangClient:
             "return_text_in_logprobs": True,
         }
         start = time.perf_counter()
-        response = self._request("/generate", payload)
+        response = self._generate(payload)
         elapsed = time.perf_counter() - start
         if isinstance(response, Mapping) and len(prefixes) == 1:
             responses = [response]
@@ -491,7 +569,7 @@ class SGLangClient:
             params.append({"max_new_tokens": self.text_max_tokens,
                            "temperature": temperature, "sampling_seed": seed,
                            "json_schema": json.dumps(schema)})
-        response = self._request("/generate", {"text": list(prefixes), "sampling_params": params})
+        response = self._generate({"text": list(prefixes), "sampling_params": params})
         if isinstance(response, Mapping) and len(prefixes) == 1:
             response = [response]
         if not isinstance(response, list) or len(response) != len(prefixes):

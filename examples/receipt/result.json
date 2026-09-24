@@ -1,0 +1,51 @@
+{
+  "model": "qwen3.8-27b",
+  "thinking": false,
+  "seconds": 6.57770286599407,
+  "result": {
+    "first_item": "ICE BLACKCOFFEE",
+    "second_item": "AVOCADO COFFEE",
+    "third_item": "CHIKEN KATSU FF",
+    "item_lines": 3,
+    "first_item_quantity": 2,
+    "subtotal": 194000.0,
+    "discount": 19400.0,
+    "total": 174600.0,
+    "cash": 200000.0,
+    "change": 25400.0,
+    "paid_in_cash": false,
+    "discount_percent": 10.0,
+    "change_is_correct": true,
+    "expense_note": "Purchased 2 iced black coffees, 1 avocado coffee, and 1 chicken katsu for a total of 174,600 IDR."
+  },
+  "expected": {
+    "first_item": "ICE BLACKCOFFE",
+    "second_item": "AVOCADO COFFEE",
+    "third_item": "CHIKEN KATSU FF",
+    "item_lines": 3,
+    "first_item_quantity": 2,
+    "subtotal": 194000,
+    "discount": 19400,
+    "total": 174600,
+    "cash": 200000,
+    "change": 25400,
+    "paid_in_cash": true,
+    "discount_percent": 10,
+    "change_is_correct": true
+  },
+  "matches": {
+    "first_item": false,
+    "second_item": true,
+    "third_item": true,
+    "item_lines": true,
+    "first_item_quantity": true,
+    "subtotal": true,
+    "discount": true,
+    "total": true,
+    "cash": true,
+    "change": true,
+    "paid_in_cash": false,
+    "discount_percent": true,
+    "change_is_correct": true
+  }
+}
