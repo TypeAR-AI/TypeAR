@@ -13,7 +13,7 @@
 </h4>
 </div>
 
-### Updates
+## Updates
 
 - **[2026/09/23]** Added [JevBench results](evals/jevbench/README.md): TypeLLM scored 195/231 without thinking and 228/231 with thinking.
 - **[2026/09/23]** Added [permutation averaging](#per-question-permutation-averaging) to improve the predictive distribution. See the [blog post](https://typellm.ai/blog/fair-die).
@@ -23,9 +23,8 @@
 
 ## Introduction
 
-TypeLLM extends autoregressive LLMs with type-safe generation. Models can still think and generate freely when needed, while producing guaranteed typed outputs when structure matters. Define the output with a JSON Schema, and TypeLLM returns values your software can use directly.
+TypeLLM brings type-safe generation to existing autoregressive LLMs without changing their architecture or weights. Inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), it lets models retain their native thinking and free-form generation while producing schema-guaranteed outputs through JSON Schema. Built on [SGLang](https://github.com/sgl-project/sglang), TypeLLM also supports richer interaction patterns beyond independent typed decisions.
 
-TypeLLM was inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), while pursuing a different goal: extending autoregressive LLMs with typed outputs and richer interaction patterns without changing their architecture or weights. It keeps the models’ original generation and reasoning capabilities while adding multiple output types. TypeLLM is built on [SGLang](https://github.com/sgl-project/sglang) and works with existing open models.
 
 ### Supported output types
 
@@ -41,7 +40,7 @@ TypeLLM was inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing
 6. **Supports thinking mode** — Enable reasoning before the final constrained answer.
 7. **Permutation averaging** — Reduce option-order bias on explicit enum questions with sampled or exhaustive orderings. See the [docs](https://typellm.ai/docs/probabilities#permutation-averaging).
 
-## JevBench results
+### JevBench results
 
 Evaluated on 231 public [JevBench](https://github.com/fstandhartinger/jevbench) tasks.
 
