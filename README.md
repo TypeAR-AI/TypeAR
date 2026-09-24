@@ -13,7 +13,7 @@
 </h4>
 </div>
 
-### Updates
+## Updates
 
 - **[2026/09/24]** Added [image input](#image-input) for vision-language models, tested with Qwen3.8-27B.
 - **[2026/09/23]** Added [JevBench results](evals/jevbench/README.md): TypeLLM scored 195/231 without thinking and 228/231 with thinking.
@@ -24,9 +24,8 @@
 
 ## Introduction
 
-TypeLLM extends autoregressive LLMs with type-safe generation. Models can still think and generate freely when needed, while producing guaranteed typed outputs when structure matters. Define the output with a JSON Schema, and TypeLLM returns values your software can use directly.
+TypeLLM brings type-safe generation to existing autoregressive LLMs without changing their architecture or weights. Inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), it lets models retain their native thinking and free-form generation while producing schema-guaranteed outputs through JSON Schema. Built on [SGLang](https://github.com/sgl-project/sglang), TypeLLM also supports richer interaction patterns beyond independent typed decisions.
 
-TypeLLM was inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), while pursuing a different goal: extending autoregressive LLMs with typed outputs and richer interaction patterns without changing their architecture or weights. It keeps the models’ original generation and reasoning capabilities while adding multiple output types. TypeLLM is built on [SGLang](https://github.com/sgl-project/sglang) and works with existing open models.
 
 ### Supported output types
 
@@ -43,7 +42,7 @@ TypeLLM was inspired by [TypeSafe AI's Jev](https://typesafe.ai/blog/introducing
 7. **Image input** — Pass images to vision-language models alongside the text context. See [Image input](#image-input).
 8. **Permutation averaging** — Reduce option-order bias on explicit enum questions with sampled or exhaustive orderings. See the [docs](https://typellm.ai/docs/probabilities#permutation-averaging).
 
-## JevBench results
+### JevBench results
 
 Evaluated on 231 public [JevBench](https://github.com/fstandhartinger/jevbench) tasks.
 
@@ -144,9 +143,6 @@ TypeLLM supports finite decisions, numeric fields, and free text:
 
 Enum choices support `string`, `integer`, and `number` types, with at most 24 values. The declared `type` validates the candidate values.
 
-Enum and boolean fields select a single-token label. Numeric and text fields
-without `enum` generate values token by token.
-
 A string without `enum` generates free text:
 
 ```python
@@ -158,12 +154,7 @@ result = client.generate(
 )
 ```
 
-Use `"maxLength": 100` to limit text to 100 Unicode characters. The separate
-`text_max_tokens` client setting defaults to 512 tokens per field.
-Incomplete, invalid, or over-length text raises `SGLangError`.
-`minLength`, `pattern`, and `format` are not supported.
-
-For example, ask for a numeric answer without enumerating every possible value:
+Ask for a numeric answer without enumerating every possible value:
 
 ```python
 result = client.generate(
@@ -180,9 +171,7 @@ print(result)
 # {"answer": 70.0}
 ```
 
-Numeric fields without `enum` accept optional `minimum` and `maximum`. The bounds
-are shown to the model and the generated value is validated against them; an out-of-range
-value raises `ValueError` instead of being returned. These fields generate plain
+These fields generate plain
 decimal notation with at most 32 digits by default; set
 `TypeLLMClient(numeric_max_digits=...)` to adjust this limit.
 
