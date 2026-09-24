@@ -549,61 +549,87 @@ def _decode_numeric(
     rng: random.Random,
     max_digits: int,
 ) -> tuple[int | float, str, str]:
+    return _decode_numeric_batch(client, [(prefix, decision)], mode, temperature, rng, max_digits)[0]
+
+
+def _decode_numeric_batch(
+    client: SGLangClient,
+    items: Sequence[tuple[str, Choice]],
+    mode: str,
+    temperature: float,
+    rng: random.Random,
+    max_digits: int,
+) -> list[tuple[int | float, str, str]]:
+    """Decode numeric fields in lockstep: one batched request per digit step."""
     end_token_id, end_token_text = client.end_of_message_token()
-    text = ""
+    texts = [""] * len(items)
+    outputs: list[tuple[int | float, str, str] | None] = [None] * len(items)
     step = 0
-    while True:
-        candidates = _numeric_token_candidates(
-            client, text, decision.numeric_type or "", max_digits
-        )
-        if _numeric_text_is_complete(text, decision.numeric_type or ""):
-            candidates[end_token_id] = (end_token_text, text, True)
-        if not candidates:
-            raise ValueError(
-                f"Could not complete numeric field {decision.name!r} within "
-                f"{max_digits} digits"
+    while any(output is None for output in outputs):
+        active = []
+        for i, (prefix, decision) in enumerate(items):
+            if outputs[i] is not None:
+                continue
+            candidates = _numeric_token_candidates(
+                client, texts[i], decision.numeric_type or "", max_digits
             )
-        ids = list(candidates)
-        by_id, meta, elapsed = client.score_candidates(prefix + text, ids)
-        raw = {str(token_id): by_id[token_id] for token_id in ids}
-        probs = candidate_softmax(
-            raw, temperature if mode == "sample" else 1.0
-        )
-        selected_key = (
-            max(raw, key=raw.__getitem__)
-            if mode == "argmax"
-            else _sample(probs, rng)
-        )
-        selected_id = int(selected_key)
-        selected_piece, next_text, finished = candidates[selected_id]
-        ranked = sorted(ids, key=by_id.__getitem__, reverse=True)[:20]
-        LOG.info(
-            "numeric name=%s step=%d candidates=%d top_candidates=%s "
-            "selected_id=%d selected=%r elapsed=%.4fs cached_tokens=%s",
-            decision.name,
-            step,
-            len(ids),
-            [
-                {
-                    "id": token_id,
-                    "text": candidates[token_id][0],
-                    "logprob": by_id[token_id],
-                    "probability": probs[str(token_id)],
-                }
-                for token_id in ranked
-            ],
-            selected_id,
-            selected_piece,
-            elapsed,
-            meta.get("cached_tokens"),
-        )
-        LOG.debug("numeric candidate_logprobs=%s probabilities=%s", raw, probs)
-        text = next_text
-        if finished:
-            value = _parse_numeric_value(text, decision)
-            completed = prefix + text + end_token_text
-            return value, completed, text
+            if _numeric_text_is_complete(texts[i], decision.numeric_type or ""):
+                candidates[end_token_id] = (end_token_text, texts[i], True)
+            if not candidates:
+                raise ValueError(
+                    f"Could not complete numeric field {decision.name!r} within "
+                    f"{max_digits} digits"
+                )
+            active.append((i, candidates, list(candidates)))
+        if len(active) == 1:
+            i, _, ids = active[0]
+            by_id, meta, elapsed = client.score_candidates(items[i][0] + texts[i], ids)
+            scored = [(by_id, meta)]
+        else:
+            scored, elapsed = client.score_candidates_batch(
+                [items[i][0] + texts[i] for i, _, _ in active], [ids for _, _, ids in active]
+            )
+        for (i, candidates, ids), (by_id, meta) in zip(active, scored):
+            prefix, decision = items[i]
+            raw = {str(token_id): by_id[token_id] for token_id in ids}
+            probs = candidate_softmax(
+                raw, temperature if mode == "sample" else 1.0
+            )
+            selected_key = (
+                max(raw, key=raw.__getitem__)
+                if mode == "argmax"
+                else _sample(probs, rng)
+            )
+            selected_id = int(selected_key)
+            selected_piece, next_text, finished = candidates[selected_id]
+            ranked = sorted(ids, key=by_id.__getitem__, reverse=True)[:20]
+            LOG.info(
+                "numeric name=%s step=%d candidates=%d top_candidates=%s "
+                "selected_id=%d selected=%r elapsed=%.4fs cached_tokens=%s",
+                decision.name,
+                step,
+                len(ids),
+                [
+                    {
+                        "id": token_id,
+                        "text": candidates[token_id][0],
+                        "logprob": by_id[token_id],
+                        "probability": probs[str(token_id)],
+                    }
+                    for token_id in ranked
+                ],
+                selected_id,
+                selected_piece,
+                elapsed,
+                meta.get("cached_tokens"),
+            )
+            LOG.debug("numeric candidate_logprobs=%s probabilities=%s", raw, probs)
+            texts[i] = next_text
+            if finished:
+                outputs[i] = (_parse_numeric_value(next_text, decision),
+                              prefix + next_text + end_token_text, next_text)
         step += 1
+    return outputs  # type: ignore[return-value]
 
 
 def _choice_orderings(decision, rng):
@@ -850,37 +876,35 @@ def _execute_batch_decisions(
     finite_indexes: list[int] = []
     open_results: dict[int, tuple[dict, str]] = {}
     text_pending = []
+    numeric_pending = []
+    # Clients that can batch thinking get every prompt of the layer, including
+    # permutation variants, before any reasoning runs.
+    defer = callable(getattr(client, "prepare_answer_prefixes", None))
+    raw_prompts: list[str] = []
+
+    def generation_prompt(parent, content, messages):
+        if parent is not None:
+            prompt = (client.extend_chat_prefix(parent, content, finish_thinking=False)
+                      if defer else client.extend_chat_prefix(parent, content))
+        else:
+            prompt = (client.render_chat(messages, add_generation_prompt=True, finish_thinking=False)
+                      if defer else client.render_chat(messages, add_generation_prompt=True))
+        raw_prompts.append(prompt)
+        return len(raw_prompts) - 1
+
+    decision_slots = {}
+    scoring_slots = []
     for index, decision in enumerate(decisions):
         messages = shared_messages + [
             {"role": "user", "content": question_content(decision)}
         ]
         parent = (parent_prefixes or {}).get(decision.name)
-        prompt = (client.extend_chat_prefix(parent, question_content(decision))
-                  if parent is not None else
-                  client.render_chat(messages, add_generation_prompt=True))
+        decision_slots[index] = generation_prompt(parent, question_content(decision), messages)
         if decision.text_type:
-            text_pending.append((index, decision, prompt, messages))
+            text_pending.append((index, decision, messages))
             continue
         if decision.numeric_type is not None:
-            value, _completed, generated_text = _decode_numeric(
-                client,
-                prompt,
-                decision,
-                mode,
-                temperature,
-                rng,
-                numeric_max_digits,
-            )
-            open_results[index] = (
-                {
-                    "name": decision.name,
-                    "question": decision.question,
-                    "label": None,
-                    "value": value,
-                    "probabilities": None,
-                },
-                complete(prompt, messages, generated_text),
-            )
+            numeric_pending.append((index, decision, messages))
             continue
         label_tokens = {
             label: client.single_token(label) for label in decision.choices
@@ -894,14 +918,11 @@ def _execute_batch_decisions(
         ordering_groups.append(orders)
         for variant, _order in orders:
             variant_content = question_content(variant)
-            variant_prompt = (prompt if variant.choices == decision.choices else
-                              client.extend_chat_prefix(parent, variant_content)
-                              if parent is not None else client.render_chat(
-                                  shared_messages + [{"role": "user", "content": variant_content}],
-                                  add_generation_prompt=True))
-            scoring_prompts.append(variant_prompt)
+            scoring_slots.append(
+                decision_slots[index] if variant.choices == decision.choices else
+                generation_prompt(parent, variant_content,
+                                  shared_messages + [{"role": "user", "content": variant_content}]))
             scoring_ids.append(ids)
-        prompts.append(prompt)
         finite_indexes.append(index)
         LOG.info(
             "batch_decision=%d name=%s candidate_token_ids=%s",
@@ -909,6 +930,30 @@ def _execute_batch_decisions(
             decision.name,
             {label: token_id for label, (token_id, _) in label_tokens.items()},
         )
+
+    ready = client.prepare_answer_prefixes(raw_prompts) if defer else raw_prompts
+    prompts = [ready[decision_slots[index]] for index in finite_indexes]
+    scoring_prompts = [ready[slot] for slot in scoring_slots]
+    text_pending = [(index, decision, ready[decision_slots[index]], messages)
+                    for index, decision, messages in text_pending]
+
+    if numeric_pending:
+        decoded = _decode_numeric_batch(
+            client,
+            [(ready[decision_slots[index]], decision) for index, decision, _ in numeric_pending],
+            mode, temperature, rng, numeric_max_digits,
+        )
+        for (index, decision, messages), (value, _completed, generated_text) in zip(numeric_pending, decoded):
+            open_results[index] = (
+                {
+                    "name": decision.name,
+                    "question": decision.question,
+                    "label": None,
+                    "value": value,
+                    "probabilities": None,
+                },
+                complete(ready[decision_slots[index]], messages, generated_text),
+            )
 
     if text_pending:
         values = client.generate_texts(

@@ -15,6 +15,7 @@
 
 ## Updates
 
+- **[2026/09/24]** Numeric fields and thinking now run batched within each batch or DAG layer; the [receipt example](examples/receipt/README.md) runs 1.4–2.3x faster with thinking.
 - **[2026/09/24]** Added [image input](#image-input) for vision-language models, tested with Qwen3.8-27B.
 - **[2026/09/23]** Added [JevBench results](evals/jevbench/README.md): TypeLLM scored 195/231 without thinking and 228/231 with thinking.
 - **[2026/09/23]** Added [permutation averaging](#per-question-permutation-averaging) to improve the predictive distribution. See the [blog post](https://typellm.ai/blog/fair-die).
@@ -329,7 +330,10 @@ roughly 1,100 context tokens and 16 Boolean fields, with
 | Sequential | 9.35 s | 0.584 s | 1.0x |
 | Batch | 1.61 s | 0.101 s | 5.8x |
 
-Each branch reused 1,088 cached tokens. Results depend on the model, workload,
+Each branch reused 1,088 cached tokens. Within a batch or a DAG layer, strings
+and choices are each generated in one batched request, numeric fields decode in
+lockstep with one batched request per digit, and thinking runs for every field
+in one batched request. Results depend on the model, workload,
 and server configuration. Sequential fields see earlier answers; batch fields
 are independent, so the modes serve different workflows.
 

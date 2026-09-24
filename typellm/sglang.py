@@ -314,10 +314,22 @@ class SGLangClient:
         closing, _ = self._continuation_parts()
         return prompt + answer + closing
 
-    def extend_chat_prefix(self, prefix: str, question: str) -> str:
+    def extend_chat_prefix(self, prefix: str, question: str, *, finish_thinking: bool = True) -> str:
         _, suffix = self._continuation_parts(question)
         prompt = prefix + suffix
-        return self._prepare_answer_prefix(prompt)
+        return self._prepare_answer_prefix(prompt) if finish_thinking else prompt
+
+    def prepare_answer_prefixes(self, prefixes: Sequence[str]) -> list[str]:
+        """Finish thinking for many generation prompts in one batched request."""
+        protocol = detect_protocol(self._get_chat_tokenizer())
+        pending = [i for i, p in enumerate(prefixes) if self.thinking or protocol.has_open_thinking(p)]
+        finished = list(prefixes)
+        if len(pending) == 1:
+            finished[pending[0]] = self._finish_thinking(prefixes[pending[0]])
+        elif pending:
+            for i, value in zip(pending, self._finish_thinking_batch([prefixes[i] for i in pending])):
+                finished[i] = value
+        return finished
 
     def _context_length(self) -> int:
         """Read the served context window, including any server override."""
@@ -344,6 +356,33 @@ class SGLangClient:
         return self._context_length_cache
 
     def _finish_thinking(self, prefix: str) -> str:
+        params, image_tokens = self._thinking_params(prefix)
+        response = self._generate({"text": prefix, "sampling_params": params})
+        return self._complete_thinking(prefix, response, image_tokens)
+
+    def _finish_thinking_batch(self, prefixes: Sequence[str]) -> list[str]:
+        served: list[int | None] = [None] * len(prefixes)
+        if self._active_images.get():
+            response = self._generate({
+                "text": list(prefixes),
+                "sampling_params": {"max_new_tokens": 0, "temperature": 0},
+            })
+            if not isinstance(response, list) or len(response) != len(prefixes):
+                raise SGLangError("Unexpected prompt-count batch response shape")
+            served = [item.get("meta_info", {}).get("prompt_tokens") if isinstance(item, Mapping) else None
+                      for item in response]
+        planned = [self._thinking_params(prefix, count) for prefix, count in zip(prefixes, served)]
+        response = self._generate({
+            "text": list(prefixes),
+            "sampling_params": [params for params, _ in planned],
+        })
+        if not isinstance(response, list) or len(response) != len(prefixes):
+            raise SGLangError("Unexpected thinking batch response shape")
+        return [self._complete_thinking(prefix, item, image_tokens)
+                for prefix, item, (_, image_tokens) in zip(prefixes, response, planned)]
+
+    def _thinking_params(self, prefix: str, served_tokens: int | None = None) -> tuple[dict[str, Any], int]:
+        """Return sampling params for one thinking request and its image-token count."""
         tokenizer = self._get_chat_tokenizer()
         protocol = detect_protocol(tokenizer)
         if not protocol.has_open_thinking(prefix):
@@ -357,10 +396,11 @@ class SGLangClient:
         if self._active_images.get():
             # Each image placeholder expands to many tokens on the server, so
             # count the prompt there; the prefill also warms the cache.
-            served = self.cache_prefix(prefix).get("prompt_tokens")
-            if type(served) is not int:
+            if served_tokens is None:
+                served_tokens = self.cache_prefix(prefix).get("prompt_tokens")
+            if type(served_tokens) is not int:
                 raise SGLangError("SGLang did not report prompt_tokens; cannot budget thinking with images")
-            image_tokens = max(0, served - prefix_tokens)
+            image_tokens = max(0, served_tokens - prefix_tokens)
             prefix_tokens += image_tokens
         closing_tokens = len(tokenizer.encode(forced_end, add_special_tokens=False))
         # This is available context, not an independent default thinking budget.
@@ -368,14 +408,15 @@ class SGLangClient:
         if available <= 0:
             raise SGLangError("Input leaves no room for thinking and the final constrained answer")
         limit = available if self.thinking_budget is None else min(available, self.thinking_budget)
-        response = self._generate({
-            "text": prefix,
-            "sampling_params": {
-                "max_new_tokens": limit,
-                "temperature": 0.6, "top_p": 0.95, "top_k": 20,
-                "stop": [protocol.thinking_close], "no_stop_trim": True,
-            },
-        })
+        return {
+            "max_new_tokens": limit,
+            "temperature": 0.6, "top_p": 0.95, "top_k": 20,
+            "stop": [protocol.thinking_close], "no_stop_trim": True,
+        }, image_tokens
+
+    def _complete_thinking(self, prefix: str, response: Any, image_tokens: int) -> str:
+        tokenizer = self._get_chat_tokenizer()
+        protocol = detect_protocol(tokenizer)
         text = response.get("text") if isinstance(response, Mapping) else None
         if not isinstance(text, str):
             raise SGLangError("Thinking returned non-text output; no typed result returned")
