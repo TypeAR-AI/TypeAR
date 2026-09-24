@@ -142,9 +142,6 @@ TypeLLM supports finite decisions, numeric fields, and free text:
 
 Enum choices support `string`, `integer`, and `number` types, with at most 24 values. The declared `type` validates the candidate values.
 
-Enum and boolean fields select a single-token label. Numeric and text fields
-without `enum` generate values token by token.
-
 A string without `enum` generates free text:
 
 ```python
@@ -156,12 +153,7 @@ result = client.generate(
 )
 ```
 
-Use `"maxLength": 100` to limit text to 100 Unicode characters. The separate
-`text_max_tokens` client setting defaults to 512 tokens per field.
-Incomplete, invalid, or over-length text raises `SGLangError`.
-`minLength`, `pattern`, and `format` are not supported.
-
-For example, ask for a numeric answer without enumerating every possible value:
+Ask for a numeric answer without enumerating every possible value:
 
 ```python
 result = client.generate(
@@ -178,9 +170,7 @@ print(result)
 # {"answer": 70.0}
 ```
 
-Numeric fields without `enum` accept optional `minimum` and `maximum`. The bounds
-are shown to the model and the generated value is validated against them; an out-of-range
-value raises `ValueError` instead of being returned. These fields generate plain
+These fields generate plain
 decimal notation with at most 32 digits by default; set
 `TypeLLMClient(numeric_max_digits=...)` to adjust this limit.
 
