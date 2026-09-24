@@ -15,7 +15,6 @@
 
 ## Updates
 
-- **[2026/09/24]** Numeric fields and thinking now run batched within each batch or DAG layer; the [receipt example](examples/receipt/README.md) runs 1.4–2.3x faster with thinking.
 - **[2026/09/24]** Added [image input](#image-input) for vision-language models, tested with Qwen3.8-27B.
 - **[2026/09/23]** Added [JevBench results](evals/jevbench/README.md): TypeLLM scored 195/231 without thinking and 228/231 with thinking.
 - **[2026/09/23]** Added [permutation averaging](#per-question-permutation-averaging) to improve the predictive distribution. See the [blog post](https://typellm.ai/blog/fair-die).
