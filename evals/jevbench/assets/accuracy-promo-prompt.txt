@@ -1,0 +1,11 @@
+Use case: ads-marketing. Create one polished landscape 16:9 TypeLLM JevBench promotional graphic. Reference image is STYLE ONLY: match its near-black background, fine rounded dark gray border, monospaced typography, off-white main text, muted gray supporting text, periwinkle blue (#8095ff) highlights and small TypeLLM wordmark with blue cursor. Do NOT reproduce dice, old title, old data or decorative illustration. Crisp restrained developer brand, generous margins, flawless legible text.
+
+Top left wordmark "TypeLLM" with small blue cursor. Large title "JevBench Accuracy". Subtitle "231 public tasks". Main body is a clean spacious two-column comparison table, model on left and right-aligned percentage on right. Headers "Model" and "Accuracy". Six rows in exactly this order and text:
+"Open-Jev 27B v1.1" | "85.28%"
+"Jev 1.13.0" | "86.58%"
+"GPT-5.6 Luna (none)" | "89.18%"
+"GPT-6 Astra (low)" | "100.00%"
+"TypeLLM + Qwen3.8-27B (no thinking)" | "84.42%"
+"TypeLLM + Qwen3.8-27B (thinking)" | "98.70%"
+Use subtle horizontal dividers, no vertical dividers. Highlight last two rows in periwinkle; last row bold. All values exact, same size percent text. No bars, no other metrics, no fractions, no extra numeric callouts. Avoid suggesting TypeLLM beats Astra.
+Small footer "External results: Open-Jev • TypeLLM: our evaluation" and "typellm.ai". Render elegant high-resolution marketing image matching reference style.

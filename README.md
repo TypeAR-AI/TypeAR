@@ -47,23 +47,6 @@ Evaluated on 231 public [JevBench](https://github.com/fstandhartinger/jevbench) 
 
 ![Accuracy Benchmark — 231 public tasks from JevBench](evals/jevbench/assets/accuracy-promo-svg.png)
 
-External results are reported by [Open-Jev](https://zefan-cai.github.io/open-jev/).
-TypeLLM results are from the runs documented here; model and inference settings
-differ across systems.
-
-The table below compares the model configurations of Open-Jev 27B v1.1 and
-TypeLLM. Both use Qwen3.8-27B, with different weight precision and additional
-training.
-
-| Model configuration | Open-Jev 27B v1.1 | TypeLLM (both runs) |
-|---|---|---|
-| Base model | Qwen3.8-27B | Qwen3.8-27B |
-| Weight precision | BF16 base; FP32 LoRA and decision head | NVFP4 weights; BF16 language-model head |
-| Additional training | Rank-8 LoRA + scalar decision head; base weights frozen | **None** |
-
-Sources: [Open-Jev model card](https://huggingface.co/ZefanCai/Open-Jev-27B-v1.1).
-TypeLLM uses the existing `RadixArk/Qwen3.8-27B-NVFP4-BF16-LMHead` checkpoint.
-
 [Full results and all per-task answers](evals/jevbench/README.md) · [Method and configuration](evals/jevbench/METHOD.md)
 
 ## Quick start
