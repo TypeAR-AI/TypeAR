@@ -16,7 +16,7 @@
 ## Updates
 
 - **[2026/09/24]** Added [image input](#image-input) for vision-language models, tested with Qwen3.8-27B.
-- **[2026/09/23]** Added [JevBench results](evals/jevbench/README.md): TypeLLM scored 195/231 without thinking and 228/231 with thinking.
+- **[2026/09/23]** Added [JevBench results](https://github.com/TypeLLM/TypeLLM/blob/main/evals/jevbench/README.md): TypeLLM scored 195/231 without thinking and 228/231 with thinking.
 - **[2026/09/23]** Added [permutation averaging](#per-question-permutation-averaging) to improve the predictive distribution. See the [blog post](https://typellm.ai/blog/fair-die).
 - **[2026/09/22]** Added `depends_on` dependency graphs with incremental prefix reuse. See the [blog post](https://typellm.ai/blog/type-safe-workflow).
 - **[2026/09/19]** Added optional [thinking mode](#thinking-mode) with a per-field budget.
@@ -46,9 +46,9 @@ TypeLLM brings type-safe generation to existing autoregressive LLMs without chan
 
 Evaluated on 231 public [JevBench](https://github.com/fstandhartinger/jevbench) tasks.
 
-![Accuracy Benchmark — 231 public tasks from JevBench](evals/jevbench/assets/accuracy-promo-svg.png)
+![Accuracy Benchmark — 231 public tasks from JevBench](https://raw.githubusercontent.com/TypeLLM/TypeLLM/main/evals/jevbench/assets/accuracy-promo-svg.png)
 
-[Full results and all per-task answers](evals/jevbench/README.md) · [Method and configuration](evals/jevbench/METHOD.md)
+[Full results and all per-task answers](https://github.com/TypeLLM/TypeLLM/blob/main/evals/jevbench/README.md) · [Method and configuration](https://github.com/TypeLLM/TypeLLM/blob/main/evals/jevbench/METHOD.md)
 
 ## Quick start
 
@@ -117,7 +117,7 @@ result = client.generate(
 print(result)
 ```
 
-Example return:
+Example output:
 
 ```python
 {
@@ -142,35 +142,6 @@ TypeLLM supports finite decisions, numeric fields, and free text:
 | Enum choice | `{"type": "string", "enum": ["meal", "travel"]}` | Candidate type: `str`, `int`, or `float` |
 
 Enum choices support `string`, `integer`, and `number` types, with at most 24 values. The declared `type` validates the candidate values.
-
-### Nullable fields
-
-Add `"null"` to the type to allow a missing value. The field returns `None`
-when the input has no value for it:
-
-```python
-result = client.generate(
-    context="Read the attached receipt.",
-    images=["receipt.jpg"],
-    questions={
-        "tip": {"type": ["number", "null"], "instructions": "Tip amount."},
-        "table": {"type": ["string", "null"], "maxLength": 10, "instructions": "Table number."},
-        "paid_in_cash": {"type": ["boolean", "null"], "instructions": "Was the bill paid in cash?"},
-        "card": {"type": ["string", "null"], "enum": ["VISA", "MASTERCARD", None],
-                 "instructions": "Card network, if paid by card."},
-    },
-)
-# {"tip": None, "table": "7A", "paid_in_cash": False, "card": None}
-```
-
-- The type is one type plus `"null"`. A nullable boolean adds `null` as a third
-  choice. As in JSON Schema, a nullable enum returns `null` only if its `enum`
-  lists `None`.
-- For numbers and strings, TypeLLM weighs the probability of `null` against
-  the probability of starting a value, then decodes the value. The tokens it
-  compares are read from the served model's tokenizer.
-- `return_probabilities` works for nullable booleans and enums, and its
-  probabilities include `None`.
 
 A string without `enum` generates free text:
 
@@ -200,9 +171,8 @@ print(result)
 # {"answer": 70.0}
 ```
 
-These fields generate plain
-decimal notation with at most 32 digits by default; set
-`TypeLLMClient(numeric_max_digits=...)` to adjust this limit.
+Numeric answers use plain decimal notation with at most 32 digits by default;
+set `TypeLLMClient(numeric_max_digits=...)` to adjust this limit.
 
 Use `instructions` to tell the model what decision to make:
 
@@ -216,6 +186,35 @@ Use `instructions` to tell the model what decision to make:
 
 If `instructions` is omitted, TypeLLM uses `description` or an instruction
 generated from the field name.
+
+### Nullable fields
+
+Add `"null"` to the type to allow a missing value. The field returns `None`
+when the input has no value for it:
+
+```python
+result = client.generate(
+    context="Read the attached receipt.",
+    images=["receipt.jpg"],
+    questions={
+        "tip": {"type": ["number", "null"], "instructions": "Tip amount."},
+        "table": {"type": ["string", "null"], "maxLength": 10, "instructions": "Table number."},
+        "paid_in_cash": {"type": ["boolean", "null"], "instructions": "Was the bill paid in cash?"},
+        "card": {"type": ["string", "null"], "enum": ["VISA", "MASTERCARD", None],
+                 "instructions": "Card network, if paid by card."},
+    },
+)
+# {"tip": None, "table": "7A", "paid_in_cash": False, "card": None}
+```
+
+- `type` takes one type plus `"null"`. A nullable boolean adds `null` as a third
+  choice. As in JSON Schema, a nullable enum returns `null` only if its `enum`
+  lists `None`.
+- For numbers and strings, TypeLLM weighs the probability of `null` against
+  the probability of starting a value, then decodes the value. The tokens it
+  compares are read from the served model's tokenizer.
+- `return_probabilities` works for nullable booleans and enums, and its
+  probabilities include `None`.
 
 ## Thinking mode
 
@@ -398,27 +397,6 @@ result = client.generate(
 Only opted-in fields return `value` and `probabilities`; other fields return plain values.
 The option is not supported on open Numeric or Text fields.
 
-### Per-question permutation averaging
-
-Add `permutations` to an `enum` question to reduce option-order bias. TypeLLM averages the probabilities and keeps the same return format.
-
-```python
-result = client.generate(
-    context="A single roll of a fair die.",
-    questions={"roll": {
-        "type": "string",
-        "enum": ["one", "two", "three", "four", "five", "six"],
-        "instructions": "What number will come up on this roll?",
-        "permutations": 8,
-        "return_probabilities": True,
-    }},
-)
-```
-
-Use `8` for eight distinct orderings or `"all"` for every ordering (up to 720). Omit it or use `1` to keep the original behavior. Only explicit `enum` fields support this option.
-
-[Docs](https://typellm.ai/docs/probabilities#permutation-averaging) · [Read the blog](https://typellm.ai/blog/fair-die)
-
 Argmax is the default. To enable sampling:
 
 ```python
@@ -445,6 +423,27 @@ result = run_schema(
     model="Qwen/Qwen3.8-27B",
 )
 ```
+
+### Per-question permutation averaging
+
+Add `permutations` to an `enum` question to reduce option-order bias. TypeLLM averages the probabilities and keeps the same return format.
+
+```python
+result = client.generate(
+    context="A single roll of a fair die.",
+    questions={"roll": {
+        "type": "string",
+        "enum": ["one", "two", "three", "four", "five", "six"],
+        "instructions": "What number will come up on this roll?",
+        "permutations": 8,
+        "return_probabilities": True,
+    }},
+)
+```
+
+Use `8` for eight distinct orderings or `"all"` for every ordering (up to 720). Omit it or use `1` to keep the original behavior. Only explicit `enum` fields support this option.
+
+[Docs](https://typellm.ai/docs/probabilities#permutation-averaging) · [Read the blog](https://typellm.ai/blog/fair-die)
 
 ## Cost analysis
 
