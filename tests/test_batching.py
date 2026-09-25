@@ -131,7 +131,7 @@ class BatchedThinkingTests(unittest.TestCase):
         counts = [p for p in client.sglang.requests("count") if width(p) > 1]
         self.assertEqual([width(p) for p in counts], [2])
         [think] = client.sglang.requests("think")
-        self.assertEqual(think["image_data"], [[encode_image(PNG)]] * 2)
+        self.assertEqual(think["image_data"], encode_image(PNG))
 
 
 if __name__ == "__main__":

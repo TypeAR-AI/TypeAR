@@ -177,7 +177,12 @@ class ImageRequestTests(unittest.TestCase):
         self.assertTrue(payloads)
         for payload in payloads:
             texts = [payload["text"]] if isinstance(payload["text"], str) else payload["text"]
-            expected = list(images) if isinstance(payload["text"], str) else [list(images)] * len(texts)
+            if isinstance(payload["text"], str):
+                expected = list(images)
+            elif len(images) == 1:
+                expected = images[0]  # sent once for the whole batch
+            else:
+                expected = [list(images)] * len(texts)
             self.assertEqual(payload["image_data"], expected)
             for text in texts:
                 self.assertEqual(text.count(VISION), len(images))

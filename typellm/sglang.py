@@ -195,7 +195,12 @@ class SGLangClient:
                     f"Prompt contains {found} image placeholders for {len(images)} images; "
                     "the context text must not contain the model's image tokens"
                 )
-        image_data = list(images) if isinstance(text, str) else [list(images) for _ in prompts]
+        if isinstance(text, str):
+            image_data = list(images)
+        elif len(images) == 1:
+            image_data = images[0]  # SGLang gives a lone image to every prompt of a batch
+        else:
+            image_data = [list(images) for _ in prompts]  # a list means one entry per prompt
         return self._request("/generate", {**payload, "image_data": image_data})
 
     def _tokenizer_model(self) -> str:
