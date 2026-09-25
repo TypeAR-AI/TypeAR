@@ -1,6 +1,8 @@
 import base64
+import copy
 import io
 import os
+import pickle
 import tempfile
 import unittest
 
@@ -219,6 +221,18 @@ class ImageRequestTests(unittest.TestCase):
         client.sglang.generate_payloads.clear()
         client.generate(context="Receipt", questions=self.QUESTIONS)
         self.assertTrue(all("image_data" not in p for p in client.sglang.generate_payloads))
+
+    def test_clients_can_be_pickled_and_keep_their_images_to_themselves(self):
+        client = TypeLLMClient(model="fake")
+        client.sglang = FakeServerClient()
+        request = {"text": VISION + "Receipt", "sampling_params": {"max_new_tokens": 0}}
+        copies = [pickle.loads(pickle.dumps(client)).sglang, copy.deepcopy(client).sglang]
+        for other in copies + [FakeServerClient()]:
+            with other.images([encode_image(PNG)]):
+                other._generate(request)
+                client.sglang._generate(request)
+            self.assertIn("image_data", other.generate_payloads[-1])
+            self.assertNotIn("image_data", client.sglang.generate_payloads[-1])
 
     def test_thinking_budget_counts_image_tokens_on_the_server(self):
         client = FakeServerClient()

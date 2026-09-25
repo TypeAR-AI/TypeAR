@@ -65,6 +65,16 @@ class SGLangClient:
             f"typellm_images_{id(self)}", default=()
         )
 
+    def __getstate__(self) -> dict[str, Any]:
+        # A ContextVar cannot be pickled; a copied client starts with no images.
+        state = self.__dict__.copy()
+        del state["_active_images"]
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self._active_images = ContextVar(f"typellm_images_{id(self)}", default=())
+
     def _info(self, name: str) -> Any:
         # SGLang 0.5.6 renamed /get_<name> to /<name>; older servers and
         # sglang-router 0.3.2 only know the old name.
