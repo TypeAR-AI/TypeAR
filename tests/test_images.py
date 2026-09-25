@@ -1,7 +1,13 @@
 import base64
+import io
 import os
 import tempfile
 import unittest
+
+try:
+    from PIL import Image
+except ImportError:  # Pillow is optional: only PIL image inputs need it.
+    Image = None
 
 from typellm import SGLangClient, SGLangError, TypeLLMClient
 from typellm.images import encode_image, encode_images
@@ -110,6 +116,27 @@ class ImageEncodingTests(unittest.TestCase):
             encode_image("missing.png")
         with self.assertRaisesRegex(ValueError, "must be a list"):
             encode_images("receipt.png")
+
+    @unittest.skipUnless(Image, "Pillow is not installed")
+    def test_pil_modes_png_cannot_store_are_sent_as_rgb(self):
+        def decoded_mode(image):
+            data = base64.b64decode(encode_image(image).split(",", 1)[1])
+            return Image.open(io.BytesIO(data)).mode
+
+        self.assertEqual(decoded_mode(Image.new("CMYK", (2, 2))), "RGB")
+        self.assertEqual(decoded_mode(Image.new("RGBA", (2, 2))), "RGBA")  # PNG keeps it as is
+
+    @unittest.skipUnless(Image, "Pillow is not installed")
+    def test_corrupt_and_float_pil_images_are_rejected(self):
+        buffer = io.BytesIO()
+        Image.new("RGB", (8, 8)).save(buffer, format="PNG")
+        data = bytearray(buffer.getvalue())
+        start = data.index(b"IDAT") + 4
+        data[start:start + 2] = b"\0\0"  # break the pixel data's zlib header; open() still works
+        with self.assertRaises(OSError):  # not sent as whatever decoded before the error
+            encode_image(Image.open(io.BytesIO(bytes(data))))
+        with self.assertRaises(OSError):  # not clipped to an all-black RGB image
+            encode_image(Image.new("F", (2, 2), 0.5))
 
 
 class PlaceholderTests(unittest.TestCase):

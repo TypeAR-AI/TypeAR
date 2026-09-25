@@ -46,9 +46,17 @@ def encode_image(image: Any) -> str:
         with open(path, "rb") as handle:
             return encode_image(handle.read())
     if callable(getattr(image, "save", None)):
-        # A PIL image; PNG keeps it lossless.
+        # A PIL image; PNG keeps it lossless. PNG cannot store every mode
+        # (CMYK, for one), so those are sent as RGB.
+        image.load()  # decode now, so a corrupt file raises instead of reaching the RGB fallback
         buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
+        try:
+            image.save(buffer, format="PNG")
+        except OSError:
+            if image.mode == "F":  # RGB would clip floats to 0-255, turning 0-1 data black
+                raise
+            buffer = io.BytesIO()
+            image.convert("RGB").save(buffer, format="PNG")
         return _data_uri(buffer.getvalue())
     raise ValueError(
         "each image must be a file path, http(s) URL, data: URI, bytes, or PIL image; "
