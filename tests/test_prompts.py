@@ -25,7 +25,7 @@ class UnifiedPromptTests(unittest.TestCase):
             "note": 'Field: "note"\nType: string or null\nInstructions: Note.\n'
                     'Answer as {"note": <string or null>}. Return null only if there is no value.',
             "guests": 'Field: "guests"\nType: integer, minimum 1, maximum 20\nInstructions: Guests.\n'
-                      'Answer as {"guests": <integer>}.',
+                      'Answer as {"guests": <integer>}. Do not use exponent notation.',
             "total": 'Field: "total"\nType: number or null\nInstructions: Total.\n'
                      'Answer as {"total": <number or null>}. Do not use exponent notation. '
                      'Return null only if there is no value.',
@@ -34,6 +34,14 @@ class UnifiedPromptTests(unittest.TestCase):
             "card": 'Field: "card"\nType: choice\nInstructions: Card.\n'
                     'Choices: {"A": "VISA", "B": null}\nAnswer as {"card": "<label>"}.',
         })
+
+    def test_bounds_are_written_without_exponent_notation(self):
+        got = prompts({
+            "rate": {"type": "number", "minimum": 0.00001, "maximum": 1e16, "instructions": "Rate."},
+            "share": {"type": "number", "minimum": 0.5, "maximum": 100, "instructions": "Share."},
+        })
+        self.assertIn("Type: number, minimum 0.00001, maximum 10000000000000000\n", got["rate"])
+        self.assertIn("Type: number, minimum 0.5, maximum 100\n", got["share"])
 
 
 if __name__ == "__main__":
