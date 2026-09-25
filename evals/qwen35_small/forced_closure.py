@@ -31,20 +31,23 @@ def main():
                                thinking_budget=budget, reasoning=[], closures=[])
                     request = backend._request
                     finish = backend._finish_thinking
+                    finish_batch = backend._finish_thinking_batch
 
                     def record_request(endpoint, payload=None, **kwargs):
                         response = request(endpoint, payload, **kwargs)
                         params = payload.get('sampling_params', {}) if payload else {}
-                        if isinstance(params, dict) and params.get('stop') == ['</think>']:
-                            meta = response.get('meta_info', {})
-                            row['reasoning'].append(dict(
-                                max_new_tokens=params['max_new_tokens'],
-                                completion_tokens=meta.get('completion_tokens'),
-                                finish_reason=meta.get('finish_reason')))
+                        # A batch of prompts has one sampling-params dict and one response each.
+                        for item_params, item in (zip(params, response) if isinstance(params, list)
+                                                  else [(params, response)]):
+                            if isinstance(item_params, dict) and item_params.get('stop') == ['</think>']:
+                                meta = item.get('meta_info', {})
+                                row['reasoning'].append(dict(
+                                    max_new_tokens=item_params['max_new_tokens'],
+                                    completion_tokens=meta.get('completion_tokens'),
+                                    finish_reason=meta.get('finish_reason')))
                         return response
 
-                    def record_finish(prefix):
-                        completed = finish(prefix)
+                    def record_closure(completed):
                         used = len(tokenizer.encode(completed, add_special_tokens=False))
                         row['closures'].append(dict(
                             forced=completed.endswith('\n\nI will now give the final answer.\n</think>\n\n'),
@@ -53,8 +56,15 @@ def main():
                             reserve_valid=used + backend.answer_reserve_tokens <= backend._context_length()))
                         return completed
 
+                    def record_finish(prefix):
+                        return record_closure(finish(prefix))
+
+                    def record_finish_batch(prefixes):
+                        return [record_closure(completed) for completed in finish_batch(prefixes)]
+
                     backend._request = record_request
                     backend._finish_thinking = record_finish
+                    backend._finish_thinking_batch = record_finish_batch
                     started = time.monotonic()
                     try:
                         result = client.generate(context=context, questions=questions)
