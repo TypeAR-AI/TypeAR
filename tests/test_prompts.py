@@ -25,7 +25,7 @@ class UnifiedPromptTests(unittest.TestCase):
             "note": 'Field: "note"\nType: string or null\nInstructions: Note.\n'
                     'Answer as {"note": <string or null>}. Return null only if there is no value.',
             "guests": 'Field: "guests"\nType: integer, minimum 1, maximum 20\nInstructions: Guests.\n'
-                      'Answer as {"guests": <integer>}. Do not use exponent notation.',
+                      'Answer as {"guests": <integer>}.',
             "total": 'Field: "total"\nType: number or null\nInstructions: Total.\n'
                      'Answer as {"total": <number or null>}. Do not use exponent notation. '
                      'Return null only if there is no value.',

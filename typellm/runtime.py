@@ -167,7 +167,7 @@ class Choice:
             placeholder = "<string" + or_null + ">" if self.text_type else f"<{self.numeric_type}{or_null}>"
             answer = (f"Answer as {{{json.dumps(self.name, ensure_ascii=False)}: {placeholder}}}."
                       if self.name is not None else f"Answer with a JSON {placeholder[1:-1]} only.")
-            if self.numeric_type is not None:
+            if self.numeric_type == "number":
                 answer += " Do not use exponent notation."
             if self.nullable:
                 answer += " Return null only if there is no value."
