@@ -143,6 +143,35 @@ TypeLLM supports finite decisions, numeric fields, and free text:
 
 Enum choices support `string`, `integer`, and `number` types, with at most 24 values. The declared `type` validates the candidate values.
 
+### Nullable fields
+
+Add `"null"` to the type to allow a missing value. The field returns `None`
+when the input has no value for it:
+
+```python
+result = client.generate(
+    context="Read the attached receipt.",
+    images=["receipt.jpg"],
+    questions={
+        "tip": {"type": ["number", "null"], "instructions": "Tip amount."},
+        "table": {"type": ["string", "null"], "maxLength": 10, "instructions": "Table number."},
+        "paid_in_cash": {"type": ["boolean", "null"], "instructions": "Was the bill paid in cash?"},
+        "card": {"type": ["string", "null"], "enum": ["VISA", "MASTERCARD", None],
+                 "instructions": "Card network, if paid by card."},
+    },
+)
+# {"tip": None, "table": "7A", "paid_in_cash": False, "card": None}
+```
+
+- The type is one type plus `"null"`. A nullable boolean adds `null` as a third
+  choice. As in JSON Schema, a nullable enum returns `null` only if its `enum`
+  lists `None`.
+- For numbers and strings, TypeLLM weighs the probability of `null` against
+  the probability of starting a value, then decodes the value. The tokens it
+  compares are read from the served model's tokenizer.
+- `return_probabilities` works for nullable booleans and enums, and its
+  probabilities include `None`.
+
 A string without `enum` generates free text:
 
 ```python

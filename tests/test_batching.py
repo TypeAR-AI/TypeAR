@@ -4,7 +4,7 @@ import unittest
 from typellm import SGLangClient, TypeLLMClient
 from typellm.images import encode_image
 
-from tests.test_images import PNG, VisionTokenizer
+from tests.test_images import PNG, VisionTokenizer, fake_detokenize, fake_tokenize
 
 THINK_STOP = "</think>"
 
@@ -30,9 +30,9 @@ class FakeServer(SGLangClient):
 
     def _request(self, path, payload=None, *, allow_text=False):
         if path == "/v1/tokenize":
-            return {"tokens": [ord(payload["prompt"])]}
+            return {"tokens": fake_tokenize(payload["prompt"])}
         if path == "/v1/detokenize":
-            return {"text": chr(payload["tokens"][0])}
+            return {"text": fake_detokenize(payload["tokens"])}
         assert path == "/generate", path
         self.payloads.append(payload)
         texts = [payload["text"]] if isinstance(payload["text"], str) else payload["text"]
@@ -43,13 +43,19 @@ class FakeServer(SGLangClient):
             rows = [rows] if isinstance(rows[0], int) else rows
             out = []
             for ids in rows:
-                pick = 1 if 1 in ids else ord("7") if ord("7") in ids else ids[0]
+                # Like the real model: a number starts with the lone space token.
+                pick = ord(" ") if ord(" ") in ids else 1 if 1 in ids else ord("7") if ord("7") in ids else ids[0]
                 out.append({"meta_info": {"output_token_ids_logprobs": [
-                    [[0.0 if t == pick else -9.0, t, chr(t)] for t in ids]]}})
+                    [[0.0 if t == pick else -9.0, t, "?"] for t in ids]]}})
         elif params[0].get("stop") == [THINK_STOP]:
             out = [{"text": "Reasoned." + THINK_STOP, "meta_info": {}} for _ in texts]
         elif "json_schema" in params[0]:
-            out = [{"text": json.dumps("blue"), "meta_info": {"finish_reason": {"type": "stop"}}} for _ in texts]
+            out = []
+            for p in params:
+                schema = json.loads(p["json_schema"])
+                # An object schema answers {"key": "blue"}; a plain string schema "blue".
+                value = {next(iter(schema["properties"])): "blue"} if schema["type"] == "object" else "blue"
+                out.append({"text": json.dumps(value), "meta_info": {"finish_reason": {"type": "stop"}}})
         else:
             out = [{"meta_info": {"prompt_tokens": 900}} for _ in texts]
         return out[0] if isinstance(payload["text"], str) else out
@@ -76,14 +82,14 @@ class NumericLockstepTests(unittest.TestCase):
             "a": {"type": "integer"}, "b": {"type": "number"}, "c": {"type": "integer"},
         })
         self.assertEqual(result, {"a": 7, "b": 7, "c": 7})
-        # "7" then the end token: two steps, each scoring all three fields.
-        self.assertEqual([width(p) for p in client.sglang.requests("score")], [3, 3])
+        # Sign, "7", then the end token: three steps, each scoring all three fields.
+        self.assertEqual([width(p) for p in client.sglang.requests("score")], [3, 3, 3])
 
     def test_a_single_number_keeps_single_requests(self):
         client = TypeLLMClient(model="fake")
         client.sglang = FakeServer()
         client.generate(context="Receipt", questions={"a": {"type": "integer"}})
-        self.assertEqual([width(p) for p in client.sglang.requests("score")], [1, 1])
+        self.assertEqual([width(p) for p in client.sglang.requests("score")], [1, 1, 1])
 
 
 class BatchedThinkingTests(unittest.TestCase):

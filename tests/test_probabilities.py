@@ -28,7 +28,7 @@ class FieldProbabilityTests(unittest.TestCase):
                     self.assertEqual(set(result['flag']['probabilities']), {True, False})
                     self.assertIs(result['plain'], False)
                     if execution == 'sequential':
-                        self.assertIn('<assistant>B</assistant>', fake.prompts[1])
+                        self.assertIn('<assistant>{"choice": "B"}</assistant>', fake.prompts[1])
                         self.assertNotIn('probabilities', fake.prompts[1])
 
     def test_invalid_options_fail_before_inference(self):

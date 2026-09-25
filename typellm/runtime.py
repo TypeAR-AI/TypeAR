@@ -26,6 +26,60 @@ from .sglang import SGLangClient
 LOG = logging.getLogger("typellm")
 
 
+def _closed_answer(decision: "Choice", value_json: str) -> str:
+    """The full answer an open field leaves in history, e.g. {"total": 174600}."""
+    return decision.answer_prefill + " " + value_json + "}" if decision.answer_prefill else value_json
+
+
+def _closed_label(decision: "Choice", label: str) -> str:
+    """A choice answer as history keeps it, e.g. {"category": "A"}."""
+    return decision.label_prefill + label + '"}' if decision.label_prefill else label
+
+
+def _text_kwargs(decisions: Sequence["Choice"]) -> dict[str, list[str | None]]:
+    """Strings are generated as {"name": "..."}; pass keys only when there are names."""
+    keys = [decision.name if decision.answer_prefill else None for decision in decisions]
+    return {"keys": keys} if any(key is not None for key in keys) else {}
+
+
+def _logsumexp(values: Sequence[float]) -> float:
+    pivot = max(values)
+    return pivot + math.log(math.fsum(math.exp(v - pivot) for v in values))
+
+
+def _choose(probs: Mapping[str, float], mode: str, rng: random.Random) -> str:
+    return max(probs, key=probs.__getitem__) if mode == "argmax" else _sample(probs, rng)
+
+
+def _decide_nulls(client, items, mode, temperature, rng) -> list[bool]:
+    """Decide null or string for nullable string fields in one batched request.
+
+    At the prefilled key, the tokens that start null compete with the tokens that
+    start a string, as this tokenizer splits {"name": null} and {"name": "text"}.
+    """
+    starts = client.json_value_starts()
+    if not starts["null"] or not starts["string"]:
+        raise ValueError("Nullable string fields need a tokenizer that starts null and strings "
+                         'with single tokens after \'{"name":\'')
+    null_ids = [token for token, _ in starts["null"]]
+    ids = null_ids + [token for token, _ in starts["string"]]
+    if len(items) == 1:
+        by_id, meta, _ = client.score_candidates(items[0][0], ids)
+        scored = [(by_id, meta)]
+    else:
+        scored, _ = client.score_candidates_batch([prompt for prompt, _ in items], [ids] * len(items))
+    nulls = []
+    for (_, decision), (by_id, _) in zip(items, scored):
+        probs = candidate_softmax(
+            {"null": _logsumexp([by_id[i] for i in null_ids]),
+             "value": _logsumexp([by_id[i] for i in ids if i not in null_ids])},
+            temperature if mode == "sample" else 1.0)
+        choice = _choose(probs, mode, rng)
+        LOG.info("null_decision name=%s p_null=%.4f selected=%s", decision.name, probs["null"], choice)
+        nulls.append(choice == "null")
+    return nulls
+
+
 def _user_content(text: str, image_count: int) -> str | list[dict[str, str]]:
     """Put images ahead of the text in the first user turn."""
     if not image_count:
@@ -49,6 +103,7 @@ class Choice:
     permutations: int | str = 1
     return_probabilities: bool = False
     depends_on: tuple[str, ...] | None = None
+    nullable: bool = False
 
     def __post_init__(self) -> None:
         if not self.choices and self.numeric_type is None and not self.text_type:
@@ -69,47 +124,56 @@ class Choice:
         if any(not label for label in self.choices):
             raise ValueError("Choice labels must be non-empty strings")
 
-    def opening_text(self) -> str:
-        if self.text_type:
-            limit = "" if self.max_length is None else f" Maximum {self.max_length} characters."
-            return f"Text(name={json.dumps(self.name, ensure_ascii=False)})\nReturn only a JSON string.{limit}\nInstructions: {self.question}"
-        question = json.dumps(self.question, ensure_ascii=False)
-        if self.numeric_type is not None:
-            attributes = []
-            if self.name is not None:
-                attributes.append(f"name={json.dumps(self.name, ensure_ascii=False)}")
-            if self.minimum is not None:
-                attributes.append(f"minimum={json.dumps(self.minimum)}")
-            if self.maximum is not None:
-                attributes.append(f"maximum={json.dumps(self.maximum)}")
-            metadata = f"{self.syntax}({', '.join(attributes)})"
-            instruction = (
-                "Return only a JSON number without a decimal point or exponent notation."
-                if self.numeric_type == "integer"
-                else "Return only a JSON number without exponent notation."
-            )
-            return "\n".join(
-                [
-                    metadata,
-                    instruction,
-                    f"Question: {self.question}",
-                ]
-            )
+    @property
+    def answer_prefill(self) -> str:
+        """Start of the answer for open fields; the model continues with the value.
 
-        lines = [f"{self.syntax}("]
+        Chat models tend to answer {"name": value}, so the value is decoded right
+        where they would write it.
+        """
+        if self.name is None or not (self.text_type or self.numeric_type is not None):
+            return ""
+        # No trailing space: in {"name": 12} the space belongs to the value's first token.
+        return "{" + json.dumps(self.name, ensure_ascii=False) + ":"
+
+    @property
+    def label_prefill(self) -> str:
+        """Start of a choice answer, {"name": "; the next token is the label."""
+        if self.name is None or self.text_type or self.numeric_type is not None:
+            return ""
+        return "{" + json.dumps(self.name, ensure_ascii=False) + ': "'
+
+    def opening_text(self) -> str:
+        """The field's prompt: the same Field / Type / Instructions / Answer lines for every type."""
+        lines = []
         if self.name is not None:
-            lines.append(f"  name={json.dumps(self.name, ensure_ascii=False)},")
-        lines.append(f"  question={question},")
-        choices = json.dumps(
-            dict(self.choices), ensure_ascii=False, separators=(",", ":")
-        )
-        lines.extend(
-            [
-                f"  choices={choices},",
-                '  instruction="Answer the question using only the best label.",',
-                ")",
-            ]
-        )
+            lines.append(f"Field: {json.dumps(self.name, ensure_ascii=False)}")
+        # A nullable field says "or null" in both its type and its answer: a bare
+        # <number> reads as "a number is required" and pulls absent values to 0.
+        or_null = " or null" if self.nullable else ""
+        if self.text_type:
+            kind = f"string{or_null}" + ("" if self.max_length is None else f", at most {self.max_length} characters")
+        elif self.numeric_type is not None:
+            bounds = [f"{word} {json.dumps(value)}" for word, value in
+                      (("minimum", self.minimum), ("maximum", self.maximum)) if value is not None]
+            kind = ", ".join([self.numeric_type + or_null, *bounds])
+        else:
+            kind = "boolean" if self.syntax == "Bool" else "choice"
+        lines.append(f"Type: {kind}")
+        lines.append(f"Instructions: {self.question}")
+        if self.text_type or self.numeric_type is not None:
+            placeholder = "<string" + or_null + ">" if self.text_type else f"<{self.numeric_type}{or_null}>"
+            answer = (f"Answer as {{{json.dumps(self.name, ensure_ascii=False)}: {placeholder}}}."
+                      if self.name is not None else f"Answer with a JSON {placeholder[1:-1]} only.")
+            if self.numeric_type == "number":
+                answer += " Do not use exponent notation."
+            if self.nullable:
+                answer += " Return null only if there is no value."
+        else:
+            lines.append(f"Choices: {json.dumps(dict(self.choices), ensure_ascii=False)}")
+            answer = (f'Answer as {{{json.dumps(self.name, ensure_ascii=False)}: "<label>"}}.'
+                      if self.name is not None else "Answer with the best label only.")
+        lines.append(answer)
         return "\n".join(lines)
 
 
@@ -207,6 +271,7 @@ class TypeLLMClient:
                     permutations=item.permutations,
                     return_probabilities=item.return_probabilities,
                     depends_on=item.depends_on,
+                    nullable=item.nullable,
                 )
                 for item in decisions
             ]
@@ -559,22 +624,55 @@ def _decode_numeric_batch(
     temperature: float,
     rng: random.Random,
     max_digits: int,
-) -> list[tuple[int | float, str, str]]:
-    """Decode numeric fields in lockstep: one batched request per digit step."""
+) -> list[tuple[int | float | None, str, str]]:
+    """Decode numeric fields in lockstep: one batched request per step.
+
+    A field prefilled with {"name": first takes a sign step at the key: the model
+    picks among the tokens this tokenizer starts a positive or negative number
+    with (and null, when nullable), then its digits follow.
+    """
     end_token_id, end_token_text = client.end_of_message_token()
+    prefilled = any(d.answer_prefill for _, d in items)
+    # After a prefilled {"name": the number ends where the object closes.
+    close_id, close_text = client.single_token("}") if prefilled else (None, "")
+    starts = client.json_value_starts() if prefilled and hasattr(client, "json_value_starts") else None
+    prefixes, signing = [], []
+    for prompt, decision in items:
+        sign_step = bool(decision.answer_prefill and starts and starts["positive"])
+        if decision.nullable and not (sign_step and starts["null"]):
+            raise ValueError(f"Nullable number {decision.name!r} needs a tokenizer that starts null "
+                             'and numbers with single tokens after \'{"name":\'')
+        prefixes.append(prompt if sign_step or not decision.answer_prefill else prompt + " ")
+        signing.append(sign_step)
     texts = [""] * len(items)
-    outputs: list[tuple[int | float, str, str] | None] = [None] * len(items)
+    unsigned = [False] * len(items)  # sign already chosen: no leading "-" in the digits
+    outputs: list[tuple[int | float | None, str, str] | None] = [None] * len(items)
     step = 0
     while any(output is None for output in outputs):
         active = []
-        for i, (prefix, decision) in enumerate(items):
+        for i, (_, decision) in enumerate(items):
             if outputs[i] is not None:
+                continue
+            if signing[i]:
+                # A digit or "-" written right after the colon ({"k":7}) is valid
+                # JSON too; rare, but kept so no way of starting a number is lost.
+                candidates = {token: ("direct", piece, next_text) for token, (piece, next_text, _) in
+                              _numeric_token_candidates(client, "", decision.numeric_type or "", max_digits).items()}
+                candidates.update({token: ("positive", piece, "") for token, piece in starts["positive"]})
+                candidates.update({token: ("negative", piece, "-") for token, piece in starts["negative"]})
+                if decision.nullable:
+                    candidates.update({token: ("null", piece, "null") for token, piece in starts["null"]})
+                active.append((i, candidates, list(candidates)))
                 continue
             candidates = _numeric_token_candidates(
                 client, texts[i], decision.numeric_type or "", max_digits
             )
+            if unsigned[i] and texts[i] == "":
+                candidates = {k: v for k, v in candidates.items() if not v[1].startswith("-")}
             if _numeric_text_is_complete(texts[i], decision.numeric_type or ""):
                 candidates[end_token_id] = (end_token_text, texts[i], True)
+                if decision.answer_prefill:
+                    candidates[close_id] = (close_text, texts[i], True)
             if not candidates:
                 raise ValueError(
                     f"Could not complete numeric field {decision.name!r} within "
@@ -583,18 +681,41 @@ def _decode_numeric_batch(
             active.append((i, candidates, list(candidates)))
         if len(active) == 1:
             i, _, ids = active[0]
-            by_id, meta, elapsed = client.score_candidates(items[i][0] + texts[i], ids)
+            by_id, meta, elapsed = client.score_candidates(prefixes[i] + texts[i], ids)
             scored = [(by_id, meta)]
         else:
             scored, elapsed = client.score_candidates_batch(
-                [items[i][0] + texts[i] for i, _, _ in active], [ids for _, _, ids in active]
+                [prefixes[i] + texts[i] for i, _, _ in active], [ids for _, _, ids in active]
             )
         for (i, candidates, ids), (by_id, meta) in zip(active, scored):
-            prefix, decision = items[i]
+            decision = items[i][1]
             raw = {str(token_id): by_id[token_id] for token_id in ids}
             probs = candidate_softmax(
                 raw, temperature if mode == "sample" else 1.0
             )
+            if signing[i]:
+                signing[i] = False
+                null_keys = [k for k in probs if candidates[int(k)][0] == "null"]
+                p_null = math.fsum(probs[k] for k in null_keys)
+                # Null asks "is there a value?": compare it with all the ways a value
+                # can start, not with the single most likely start.
+                if decision.nullable:
+                    choice = _choose({"null": p_null, "value": 1 - p_null}, mode, rng)
+                    LOG.info("numeric name=%s start=%s p_null=%.4f", decision.name, choice, p_null)
+                    if choice == "null":
+                        outputs[i] = (None, prefixes[i] + candidates[int(null_keys[0])][1], "null")
+                        continue
+                value_probs = {k: p / (1 - p_null) for k, p in probs.items() if k not in null_keys}
+                kind, piece, next_text = candidates[int(_choose(value_probs, mode, rng))]
+                # Text, not tokens, goes to the server: ' -' + digits reads as the
+                # prompt ' ' + '-' + digits, which the server tokenizes naturally.
+                if kind == "negative":
+                    prefixes[i] += piece[:-1]
+                elif kind == "positive":
+                    prefixes[i] += piece
+                    unsigned[i] = bool(starts["negative"])
+                texts[i] = next_text
+                continue
             selected_key = (
                 max(raw, key=raw.__getitem__)
                 if mode == "argmax"
@@ -627,7 +748,7 @@ def _decode_numeric_batch(
             texts[i] = next_text
             if finished:
                 outputs[i] = (_parse_numeric_value(next_text, decision),
-                              prefix + next_text + end_token_text, next_text)
+                              prefixes[i] + next_text + selected_piece, next_text)
         step += 1
     return outputs  # type: ignore[return-value]
 
@@ -695,11 +816,18 @@ def _execute_decisions(
             user_content = _user_content(context.rstrip() + "\n\n" + user_content, image_count)
         messages.append({"role": "user", "content": user_content})
         prefix = client.render_chat(messages, add_generation_prompt=True)
+        key_prompt = prefix + decision.answer_prefill
+        if decision.text_type and decision.nullable and _decide_nulls(
+                client, [(key_prompt, decision)], mode, temperature, rng)[0]:
+            messages.append({"role": "assistant", "content": _closed_answer(decision, "null")})
+            results.append({"name": decision.name, "question": decision.question,
+                            "label": None, "value": None, "probabilities": None})
+            continue
         if decision.text_type:
             value = client.generate_texts([prefix], [decision.max_length],
                 temperature=0 if mode == "argmax" else temperature,
-                seed=rng.randrange(2**31))[0]
-            messages.append({"role": "assistant", "content": json.dumps(value, ensure_ascii=False)})
+                seed=rng.randrange(2**31), **_text_kwargs([decision]))[0]
+            messages.append({"role": "assistant", "content": _closed_answer(decision, json.dumps(value, ensure_ascii=False))})
             prefix = client.render_chat(messages, add_generation_prompt=False)
             results.append({"name": decision.name, "question": decision.question,
                             "label": None, "value": value, "probabilities": None})
@@ -707,14 +835,14 @@ def _execute_decisions(
         if decision.numeric_type is not None:
             semantic_value, prefix, generated_text = _decode_numeric(
                 client,
-                prefix,
+                key_prompt,
                 decision,
                 mode,
                 temperature,
                 rng,
                 numeric_max_digits,
             )
-            messages.append({"role": "assistant", "content": generated_text})
+            messages.append({"role": "assistant", "content": _closed_answer(decision, generated_text)})
             results.append(
                 {
                     "name": decision.name,
@@ -746,12 +874,12 @@ def _execute_decisions(
                     content = context.rstrip() + "\n\n" + content
                 variant_prompts.append(client.render_chat(
                     messages[:-1] + [{"role": "user", "content": content}],
-                    add_generation_prompt=True))
+                    add_generation_prompt=True) + decision.label_prefill)
             scored, elapsed = client.score_candidates_batch(variant_prompts, [ids] * len(orders))
             probabilities = _mean_order_probabilities(scored, orders, label_tokens, probability_temperature)
             raw, meta = None, {}
         else:
-            by_id, meta, elapsed = client.score_candidates(prefix, ids)
+            by_id, meta, elapsed = client.score_candidates(prefix + decision.label_prefill, ids)
             raw = {label: by_id[token_id] for label, (token_id, _) in label_tokens.items()}
             probabilities = candidate_softmax(raw, probability_temperature)
         selected = (max(probabilities, key=probabilities.__getitem__)
@@ -772,7 +900,7 @@ def _execute_decisions(
 
         # Send the growing full prefix again. SGLang—not this client—owns and
         # recovers all KV tensors through its RadixAttention prefix cache.
-        messages.append({"role": "assistant", "content": selected_text})
+        messages.append({"role": "assistant", "content": _closed_label(decision, selected_text)})
         prefix = client.render_chat(messages, add_generation_prompt=False)
         results.append(
             {
@@ -894,6 +1022,7 @@ def _execute_batch_decisions(
 
     decision_slots = {}
     scoring_slots = []
+    scoring_prefills = []
     for index, decision in enumerate(decisions):
         messages = shared_messages + [
             {"role": "user", "content": question_content(decision)}
@@ -923,6 +1052,7 @@ def _execute_batch_decisions(
                 generation_prompt(parent, variant_content,
                                   shared_messages + [{"role": "user", "content": variant_content}]))
             scoring_ids.append(ids)
+            scoring_prefills.append(decision.label_prefill)
         finite_indexes.append(index)
         LOG.info(
             "batch_decision=%d name=%s candidate_token_ids=%s",
@@ -933,39 +1063,48 @@ def _execute_batch_decisions(
 
     ready = client.prepare_answer_prefixes(raw_prompts) if defer else raw_prompts
     prompts = [ready[decision_slots[index]] for index in finite_indexes]
-    scoring_prompts = [ready[slot] for slot in scoring_slots]
-    text_pending = [(index, decision, ready[decision_slots[index]], messages)
-                    for index, decision, messages in text_pending]
+    scoring_prompts = [ready[slot] + prefill for slot, prefill in zip(scoring_slots, scoring_prefills)]
+    # Open fields continue from {"name": ; history gets the closed object.
+    def open_row(decision, value):
+        return {"name": decision.name, "question": decision.question,
+                "label": None, "value": value, "probabilities": None}
+
+    open_pending = [(index, decision, messages, ready[decision_slots[index]])
+                    for index, decision, messages in numeric_pending + text_pending]
+    nullable = [item for item in open_pending if item[1].nullable and item[1].text_type]
+    if nullable:
+        nulls = _decide_nulls(
+            client, [(prompt + decision.answer_prefill, decision) for _, decision, _, prompt in nullable],
+            mode, temperature, rng)
+        for (index, decision, messages, prompt), is_null in zip(nullable, nulls):
+            if is_null:
+                open_results[index] = (open_row(decision, None),
+                                       complete(prompt, messages, _closed_answer(decision, "null")))
+    open_pending = [item for item in open_pending if item[0] not in open_results]
+    numeric_pending = [item for item in open_pending if item[1].numeric_type is not None]
+    text_pending = [item for item in open_pending if item[1].text_type]
 
     if numeric_pending:
         decoded = _decode_numeric_batch(
             client,
-            [(ready[decision_slots[index]], decision) for index, decision, _ in numeric_pending],
+            [(prompt + decision.answer_prefill, decision) for _, decision, _, prompt in numeric_pending],
             mode, temperature, rng, numeric_max_digits,
         )
-        for (index, decision, messages), (value, _completed, generated_text) in zip(numeric_pending, decoded):
-            open_results[index] = (
-                {
-                    "name": decision.name,
-                    "question": decision.question,
-                    "label": None,
-                    "value": value,
-                    "probabilities": None,
-                },
-                complete(ready[decision_slots[index]], messages, generated_text),
-            )
+        for (index, decision, messages, prompt), (value, _completed, generated_text) in zip(numeric_pending, decoded):
+            open_results[index] = (open_row(decision, value),
+                                   complete(prompt, messages, _closed_answer(decision, generated_text)))
 
     if text_pending:
         values = client.generate_texts(
-            [item[2] for item in text_pending],
-            [item[1].max_length for item in text_pending],
+            [prompt for _, _, _, prompt in text_pending],
+            [decision.max_length for _, decision, _, _ in text_pending],
             temperature=0 if mode == "argmax" else temperature,
             seed=rng.randrange(2**31),
+            **_text_kwargs([decision for _, decision, _, _ in text_pending]),
         )
-        for (index, decision, prompt, messages), value in zip(text_pending, values):
-            completed = complete(prompt, messages, json.dumps(value, ensure_ascii=False))
-            open_results[index] = ({"name": decision.name, "question": decision.question,
-                                       "label": None, "value": value, "probabilities": None}, completed)
+        for (index, decision, messages, prompt), value in zip(text_pending, values):
+            completed = complete(prompt, messages, _closed_answer(decision, json.dumps(value, ensure_ascii=False)))
+            open_results[index] = (open_row(decision, value), completed)
 
     # Warm the exact common prefix once, then let SGLang fork the cached state
     # across the K batched prompts. TypeLLM never reads or moves KV tensors.
@@ -1009,7 +1148,7 @@ def _execute_batch_decisions(
             complete(
                 prompts[finite_index],
                 shared_messages + [{"role": "user", "content": question_content(decision)}],
-                selected_text,
+                _closed_label(decision, selected_text),
             )
         )
         LOG.info("batch_decision=%d raw_candidate_logprobs=%s", index, raw)

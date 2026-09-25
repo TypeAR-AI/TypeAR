@@ -9,6 +9,24 @@ from typellm.images import encode_image, encode_images
 from tests.test_typellm import FakeSGLang
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+
+# Multi-character pieces, split the way Qwen-style tokenizers split JSON:
+# {"k": null} -> '{"' 'k' '":' ' null' '}'. Everything else is one char per token.
+PIECES = {'{"': 950, '":': 951, " null": 819, " -": 900, ' "': 328, ' ""': 901}
+
+
+def fake_tokenize(text):
+    ids, i = [], 0
+    while i < len(text):
+        piece = max((p for p in PIECES if text.startswith(p, i)), key=len, default=None)
+        ids.append(PIECES[piece] if piece else ord(text[i]))
+        i += len(piece) if piece else 1
+    return ids
+
+
+def fake_detokenize(ids):
+    names = {v: k for k, v in PIECES.items()}
+    return "".join(names.get(i) or chr(i) for i in ids)
 VISION = "<|vision_start|><|image_pad|><|vision_end|>"
 
 
@@ -52,9 +70,9 @@ class FakeServerClient(SGLangClient):
 
     def _request(self, path, payload=None, *, allow_text=False):
         if path == "/v1/tokenize":
-            return {"tokens": [ord(payload["prompt"])]}
+            return {"tokens": fake_tokenize(payload["prompt"])}
         if path == "/v1/detokenize":
-            return {"text": chr(payload["tokens"][0])}
+            return {"text": fake_detokenize(payload["tokens"])}
         assert path == "/generate", path
         self.generate_payloads.append(payload)
         texts = [payload["text"]] if isinstance(payload["text"], str) else payload["text"]

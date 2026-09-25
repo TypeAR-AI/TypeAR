@@ -52,7 +52,7 @@ class DependencyTests(unittest.TestCase):
             self.assertIn(f'"{name}": true', final)
         self.assertNotIn('unrelated', final)
         self.assertIsNone(client.last_prompt)
-        self.assertIn('name="final"', client.last_prompts[0])
+        self.assertIn('Field: "final"', client.last_prompts[0])
         self.assertTrue(result['root']['value'])
 
     def test_incremental_prefixes_and_unique_warmups(self):

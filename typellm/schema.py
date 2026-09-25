@@ -31,6 +31,7 @@ class Decision:
     permutations: int | str = 1
     return_probabilities: bool = False
     depends_on: tuple[str, ...] | None = None
+    nullable: bool = False
 
 
 def _has_duplicates(values: Sequence[Any]) -> bool:
@@ -99,6 +100,13 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
         )
 
         field_type = field.get("type")
+        # ["string", "null"] and the like: one value type that may also be null.
+        nullable = False
+        if isinstance(field_type, list):
+            kinds = [kind for kind in field_type if kind != "null"]
+            if len(field_type) != 2 or len(kinds) != 1 or not isinstance(kinds[0], str):
+                raise SchemaError(f'type for {name!r} must be one type or [type, "null"]')
+            field_type, nullable = kinds[0], True
         enum = field.get("enum")
         permutations = field.get("permutations", 1)
         if "permutations" in field:
@@ -131,13 +139,14 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
             for keyword in ("minLength", "pattern", "format"):
                 if keyword in field:
                     raise SchemaError(f"{keyword} is not supported for text fields")
-            decisions.append(Decision(name, question, (), "Text", text_type=True, max_length=max_length))
+            decisions.append(Decision(name, question, (), "Text", text_type=True,
+                                      max_length=max_length, nullable=nullable))
             continue
         if field_type == "boolean":
-            values = [True, False] if enum is None else enum
+            values = ([True, False] + [None] * nullable) if enum is None else enum
             if not isinstance(values, list) or not values:
                 raise SchemaError(f"enum for {name!r} must be a non-empty list")
-            if any(type(value) is not bool for value in values):
+            if any(type(value) is not bool and not (nullable and value is None) for value in values):
                 raise SchemaError(f"boolean enum for {name!r} may contain only booleans")
             syntax = "Bool"
         elif field_type in {"integer", "number"} and enum is None:
@@ -161,6 +170,7 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
                     numeric_type=field_type,
                     minimum=minimum,
                     maximum=maximum,
+                    nullable=nullable,
                 )
             )
             continue
@@ -177,17 +187,19 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
                     f"the maximum is {MAX_ENUM_CHOICES}"
                 )
             values = enum
+            # As in JSON Schema, null is allowed only when the enum lists it.
+            typed = [value for value in values if not (nullable and value is None)]
             if field_type == "string":
-                valid = all(isinstance(value, str) for value in values)
+                valid = all(isinstance(value, str) for value in typed)
             elif field_type == "integer":
-                valid = all(type(value) is int for value in values)
+                valid = all(type(value) is int for value in typed)
             else:
-                valid = all(_is_finite_number(value) for value in values)
+                valid = all(_is_finite_number(value) for value in typed)
             if not valid:
                 raise SchemaError(
                     f"enum values for {name!r} do not match type {field_type!r}"
                 )
-            if field_type == "string" and max_length is not None and any(len(v) > max_length for v in values):
+            if field_type == "string" and max_length is not None and any(len(v) > max_length for v in typed):
                 raise SchemaError(f"enum values for {name!r} exceed maxLength")
             syntax = "Choice"
         else:
@@ -203,7 +215,8 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
         if _has_duplicates(values):
             raise SchemaError(f"enum for {name!r} contains duplicate values")
         decisions.append(
-            Decision(name, question, tuple(values), syntax, return_probabilities=return_probabilities, permutations=permutations)
+            Decision(name, question, tuple(values), syntax, return_probabilities=return_probabilities,
+                     permutations=permutations, nullable=nullable)
         )
 
     compiled = []

@@ -21,6 +21,7 @@ class SGLangError(RuntimeError):
     pass
 
 
+
 class SGLangClient:
     def __init__(
         self,
@@ -54,6 +55,7 @@ class SGLangClient:
         self.tokenizer = tokenizer
         self.numeric_cache_dir = numeric_cache_dir
         self._label_tokens: dict[str, tuple[int, str]] = {}
+        self._json_value_starts: dict[str, list[tuple[int, str]]] | None = None
         self._model_info_cache: Mapping[str, Any] | None = None
         self._numeric_tokens: list[tuple[int, str]] | None = None
         self._chat_tokenizer: Any | None = None
@@ -477,6 +479,47 @@ class SGLangClient:
             )
         return token_id, token_text
 
+    def _tokenize(self, text: str) -> list[int]:
+        tokenized = self._request(
+            "/v1/tokenize",
+            {"model": self._tokenizer_model(), "prompt": text, "add_special_tokens": False},
+        )
+        ids = tokenized.get("tokens") if isinstance(tokenized, Mapping) else None
+        if not isinstance(ids, list):
+            raise SGLangError(f"/v1/tokenize returned no token list for {text!r}")
+        return [int(i) for i in ids]
+
+    def json_value_starts(self) -> dict[str, list[tuple[int, str]]]:
+        """Tokens that start a JSON value right after '{"k":', read from the tokenizer.
+
+        Returns {"null": [...], "positive": [...], "negative": [...], "string": [...]}
+        as (token_id, text) pairs. Most tokenizers attach the space to the value:
+        ' null', ' -', ' "'; a positive number starts with a lone ' '. Kinds this
+        tokenizer does not split that way are left empty.
+        """
+        if self._json_value_starts is not None:
+            return self._json_value_starts
+        key = '{"k":'
+        key_ids = self._tokenize(key)
+        starts: dict[str, list[tuple[int, str]]] = {"null": [], "positive": [], "negative": [], "string": []}
+        for kind, sample, accept in (
+            ("null", '{"k": null}', lambda piece: piece.strip() == "null"),
+            ("positive", '{"k": 1}', lambda piece: piece != "" and piece.strip() == ""),
+            ("negative", '{"k": -1}', lambda piece: piece.strip() == "-"),
+            ("string", '{"k": "a"}', lambda piece: piece.strip() == '"'),
+            ("string", '{"k": ""}', lambda piece: piece.strip() == '""'),
+        ):
+            ids = self._tokenize(sample)
+            if ids[:len(key_ids)] != key_ids or len(ids) <= len(key_ids):
+                continue
+            token = ids[len(key_ids)]
+            piece = self._request("/v1/detokenize", {"model": self._tokenizer_model(), "tokens": [token]})
+            piece = piece.get("text") if isinstance(piece, Mapping) else None
+            if isinstance(piece, str) and accept(piece) and (token, piece) not in starts[kind]:
+                starts[kind].append((token, piece))
+        self._json_value_starts = starts
+        return starts
+
     def single_token(self, label: str) -> tuple[int, str]:
         """Return (token_id, exact decoded text), rejecting multi-token labels."""
         if label in self._label_tokens:
@@ -596,17 +639,28 @@ class SGLangClient:
         *,
         temperature: float = 0,
         seed: int = 0,
+        keys: Sequence[str | None] | None = None,
     ) -> list[str]:
-        """Generate JSON strings in a native batch, then validate every value."""
+        """Generate JSON strings in a native batch, then validate every value.
+
+        With a key, the string is generated as the one value of {"key": "..."},
+        the form chat models naturally answer in; the grammar fixes the key.
+        """
         if len(prefixes) != len(max_lengths):
             raise ValueError("prefixes and max_lengths must have the same length")
+        keys = [None] * len(prefixes) if keys is None else list(keys)
+        if len(keys) != len(prefixes):
+            raise ValueError("prefixes and keys must have the same length")
         if not prefixes:
             return []
         params = []
-        for limit in max_lengths:
+        for limit, key in zip(max_lengths, keys):
             schema: dict[str, Any] = {"type": "string"}
             if limit is not None:
                 schema["maxLength"] = limit
+            if key is not None:
+                schema = {"type": "object", "properties": {key: schema},
+                          "required": [key], "additionalProperties": False}
             params.append({"max_new_tokens": self.text_max_tokens,
                            "temperature": temperature, "sampling_seed": seed,
                            "json_schema": json.dumps(schema)})
@@ -616,7 +670,7 @@ class SGLangClient:
         if not isinstance(response, list) or len(response) != len(prefixes):
             raise SGLangError("Unexpected text batch response shape")
         values = []
-        for item, limit in zip(response, max_lengths):
+        for item, limit, key in zip(response, max_lengths, keys):
             if not isinstance(item, Mapping):
                 raise SGLangError("Invalid text response")
             meta = item.get("meta_info", {})
@@ -626,6 +680,8 @@ class SGLangClient:
                 raise SGLangError(f"Text generation did not complete normally: {finish!r}")
             try:
                 value = json.loads(item["text"])
+                if key is not None:
+                    value = value[key]
             except (KeyError, TypeError, ValueError) as exc:
                 raise SGLangError("Text generation returned an invalid JSON string") from exc
             if not isinstance(value, str):

@@ -543,7 +543,7 @@ class ThinkingTests(unittest.TestCase):
                 return thinking._finish_thinking(prompt + "<think>") if add_generation_prompt else prompt
             fake.render_chat = render_with_thinking
             def generate_texts(prefixes, limits, **kwargs):
-                self.assertTrue(all(p.endswith("</think>\n\n") for p in prefixes))
+                self.assertTrue(all(p.endswith('</think>\n\n') for p in prefixes))
                 return ["blue"] * len(prefixes)
             fake.generate_texts = generate_texts
             client = TypeLLMClient(execution=execution)
@@ -661,7 +661,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         self.assertEqual(compiled.choices["A"], 0.0)
         self.assertEqual(compiled.choices["K"], 1.0)
         self.assertIn(
-            "Answer the question using only the best label.",
+            'Answer as {"score": "<label>"}.',
             compiled.opening_text(),
         )
         result = client.generate(context="context", schema=schema)
@@ -688,7 +688,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
 
         self.assertEqual(result, {"scale": 0.5, "enabled": True})
         self.assertNotIn("A", result)
-        self.assertIn("<assistant>B</assistant>", fake.prompts[1])
+        self.assertIn('<assistant>{"scale": "B"}</assistant>', fake.prompts[1])
 
     def test_open_integer_is_constrained_per_character(self):
         schema = {
@@ -716,10 +716,10 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         self.assertNotIn(3, fake.candidate_sets[0])
         self.assertIn(3, fake.candidate_sets[1])
         self.assertIn(
-            "Return only a JSON number without a decimal point or exponent notation.",
+            'Type: integer, minimum 0, maximum 100\nInstructions: How many items?\nAnswer as {"count": <integer>}.',
             fake.prompts[0],
         )
-        self.assertIn("<assistant>42</assistant>", fake.prompts[-1])
+        self.assertIn('<assistant>{"count": 42}</assistant>', fake.prompts[-1])
 
     def test_open_integer_can_finish_with_one_multi_character_model_token(self):
         schema = {
@@ -745,8 +745,8 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         result = client.generate(context="context", schema=schema)
 
         self.assertEqual(result, {"answer": 5461})
-        self.assertEqual(fake.candidate_sets, [[9001, 9002], [9001, 9002, 3]])
-        self.assertIn("<assistant>5461<eom>", client.last_prompt)
+        self.assertEqual(fake.candidate_sets, [[9001, 9002], [9001, 9002, 3, ord("}")]])
+        self.assertIn('<assistant>{"answer": 5461<eom>', client.last_prompt)
 
     def test_open_float_supports_sign_decimal_and_message_termination(self):
         schema = {
@@ -763,10 +763,10 @@ class JsonSchemaExecutionTests(unittest.TestCase):
 
         self.assertEqual(result, {"temperature": -0.75})
         self.assertIn(
-            "Return only a JSON number without exponent notation.",
+            'Answer as {"temperature": <number>}. Do not use exponent notation.',
             client.last_prompt,
         )
-        self.assertIn("<assistant>-0.75<eom>", client.last_prompt)
+        self.assertIn('<assistant>{"temperature": -0.75<eom>', client.last_prompt)
 
     def test_open_integer_beyond_float_range_preserves_value_and_bounds(self):
         big = 10**400
@@ -811,13 +811,14 @@ class JsonSchemaExecutionTests(unittest.TestCase):
 
         self.assertEqual(result, {"n": 12.0})
         self.assertIn(ord("."), fake.candidate_sets[1])
-        self.assertEqual(fake.candidate_sets[2], [3])
+        self.assertEqual(fake.candidate_sets[2], [3, ord("}")])
 
     def test_text_prompt_keeps_non_ascii_field_names_readable(self):
         [compiled] = TypeLLMClient().compile_schema(
             {"type": "object", "properties": {"名称": {"type": "string"}}}
         )
-        self.assertIn('Text(name="名称")', compiled.opening_text())
+        self.assertIn('Field: "名称"', compiled.opening_text())
+        self.assertIn('Answer as {"名称": <string>}.', compiled.opening_text())
 
     def test_candidate_logprobs_match_shapes_recorded_from_a_real_server(self):
         from typellm import extract_candidate_logprobs
@@ -947,8 +948,8 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         result = client.generate(context="context", schema=schema)
 
         self.assertEqual(result, {"count": 7, "enabled": True})
-        self.assertIn("<assistant>7</assistant>", client.last_prompts[0])
-        self.assertIn("<assistant>A</assistant>", client.last_prompts[1])
+        self.assertIn('<assistant>{"count": 7}</assistant>', client.last_prompts[0])
+        self.assertIn('<assistant>{"enabled": "A"}</assistant>', client.last_prompts[1])
 
     def test_batch_prefills_once_and_forks_independent_questions(self):
         schema = {
