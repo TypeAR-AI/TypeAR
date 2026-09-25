@@ -1,5 +1,6 @@
 import math
 import unittest
+from unittest.mock import patch
 
 from typellm import TypeLLMClient
 
@@ -60,23 +61,55 @@ class SplitValueServer(FakeServer):
         return super()._request(path, payload, allow_text=allow_text)
 
 
+class KeyServer(FakeServer):
+    """Scores the prefilled key with fixed probabilities; the rest is on unscored tokens."""
+
+    def __init__(self, weights):
+        super().__init__()
+        self.weights = weights
+
+    def _request(self, path, payload=None, *, allow_text=False):
+        if path == "/generate" and "token_ids_logprob" in payload and 819 in payload["token_ids_logprob"]:
+            return {"meta_info": {"output_token_ids_logprobs": [
+                [[math.log(self.weights.get(t, 1e-9)), t, "?"] for t in payload["token_ids_logprob"]]]}}
+        return super()._request(path, payload, allow_text=allow_text)
+
+
 class ValueStartTests(unittest.TestCase):
     def test_starts_are_read_from_the_tokenizer(self):
         self.assertEqual(FakeServer().json_value_starts(), {
             "null": [(819, " null")], "positive": [(ord(" "), " ")],
-            "negative": [(900, " -")], "string": [(328, ' "'), (901, ' ""')],
+            "negative": [(900, " -")],
         })
 
-    def test_a_tokenizer_without_an_empty_string_token_still_works(self):
-        del fake_vocab.PIECES[' ""']
-        try:
+    def test_a_string_start_that_is_never_scored_still_counts_as_a_value(self):
+        # Qwen3.5 starts "$12.50" with the merged token ' "$': null (0.004) must
+        # lose to the 0.996 that is not null, not beat ' "' (0.002) alone.
+        client = TypeLLMClient(model="fake")
+        client.sglang = KeyServer({819: 0.004, 328: 0.002})
+        result = client.generate(context="Receipt: $12.50", questions={"price": {"type": ["string", "null"]}})
+        self.assertEqual(result, {"price": "blue"})
+
+    def test_null_written_without_the_space_also_counts_as_null(self):
+        # ' null' 0.30 + 'null' 0.25 = 0.55 is null, though ' null' alone loses to the rest.
+        with patch.dict(fake_vocab.PIECES, {"null": 2827}):
             client = TypeLLMClient(model="fake")
-            client.sglang = FakeServer()
-            self.assertEqual(client.sglang.json_value_starts()["string"], [(328, ' "')])
+            client.sglang = KeyServer({819: 0.30, 2827: 0.25})
+            self.assertEqual(client.sglang.json_value_starts()["null"], [(819, " null"), (2827, "null")])
             result = client.generate(context="Receipt", questions={"note": {"type": ["string", "null"]}})
-            self.assertIn(result["note"], (None, "blue"))
-        finally:
-            fake_vocab.PIECES[' ""'] = 901
+        self.assertEqual(result, {"note": None})
+
+    def test_a_tokenizer_without_its_own_space_null_token_still_fails_loudly(self):
+        # {"k": null} starts with the lone space numbers share, so null cannot be told apart.
+        pieces = {piece: token for piece, token in fake_vocab.PIECES.items() if piece != " null"}
+        with patch.dict(fake_vocab.PIECES, {**pieces, "null": 2827}, clear=True):
+            for field in ({"type": ["string", "null"]}, {"type": ["number", "null"]}):
+                with self.subTest(field=field):
+                    client = TypeLLMClient(model="fake")
+                    client.sglang = FakeServer()
+                    self.assertEqual(client.sglang.json_value_starts()["null"], [])
+                    with self.assertRaisesRegex(ValueError, "a tokenizer that starts null"):
+                        client.generate(context="Receipt", questions={"x": field})
 
     def test_negative_numbers_start_with_the_negative_token(self):
         client = TypeLLMClient(model="fake")
@@ -108,6 +141,14 @@ class ValueStartTests(unittest.TestCase):
         client = TypeLLMClient(model="fake")
         client.sglang = SplitValueServer()
         self.assertEqual(client.generate(context="Log", questions={"t": {"type": ["integer", "null"]}}), {"t": 7})
+
+    def test_temperature_applies_to_null_after_the_value_starts_are_added_up(self):
+        # Per-start temperature would make null (0.40) win almost always at 0.01.
+        client = TypeLLMClient(model="fake")
+        client.sglang = SplitValueServer()
+        result = client.generate(context="Log", questions={"t": {"type": ["integer", "null"]}},
+                                 mode="sample", temperature=0.01)
+        self.assertEqual(result, {"t": 7})
 
 
 if __name__ == "__main__":

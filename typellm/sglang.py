@@ -492,22 +492,24 @@ class SGLangClient:
     def json_value_starts(self) -> dict[str, list[tuple[int, str]]]:
         """Tokens that start a JSON value right after '{"k":', read from the tokenizer.
 
-        Returns {"null": [...], "positive": [...], "negative": [...], "string": [...]}
-        as (token_id, text) pairs. Most tokenizers attach the space to the value:
-        ' null', ' -', ' "'; a positive number starts with a lone ' '. Kinds this
-        tokenizer does not split that way are left empty.
+        Returns {"null": [...], "positive": [...], "negative": [...]} as
+        (token_id, text) pairs. Most tokenizers attach the space to the value:
+        ' null', ' -'; a positive number starts with a lone ' '. Kinds this
+        tokenizer does not split that way are left empty. Null written without
+        the space, {"k":null}, counts too, but only next to its own ' null'.
         """
         if self._json_value_starts is not None:
             return self._json_value_starts
         key = '{"k":'
         key_ids = self._tokenize(key)
-        starts: dict[str, list[tuple[int, str]]] = {"null": [], "positive": [], "negative": [], "string": []}
+        starts: dict[str, list[tuple[int, str]]] = {"null": [], "positive": [], "negative": []}
         for kind, sample, accept in (
             ("null", '{"k": null}', lambda piece: piece.strip() == "null"),
+            # Without its own ' null' token, null would start with the lone space
+            # numbers share, so a tokenizer like that must still find no null.
+            ("null", '{"k":null}', lambda piece: bool(starts["null"]) and piece.strip() == "null"),
             ("positive", '{"k": 1}', lambda piece: piece != "" and piece.strip() == ""),
             ("negative", '{"k": -1}', lambda piece: piece.strip() == "-"),
-            ("string", '{"k": "a"}', lambda piece: piece.strip() == '"'),
-            ("string", '{"k": ""}', lambda piece: piece.strip() == '""'),
         ):
             ids = self._tokenize(sample)
             if ids[:len(key_ids)] != key_ids or len(ids) <= len(key_ids):

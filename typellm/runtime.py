@@ -54,25 +54,26 @@ def _choose(probs: Mapping[str, float], mode: str, rng: random.Random) -> str:
 def _decide_nulls(client, items, mode, temperature, rng) -> list[bool]:
     """Decide null or string for nullable string fields in one batched request.
 
-    At the prefilled key, the tokens that start null compete with the tokens that
-    start a string, as this tokenizer splits {"name": null} and {"name": "text"}.
+    At the prefilled key, null competes with every other token: SGLang's logprobs
+    span the whole vocabulary, and a string can start with ' "' or with a merged
+    token such as ' "$' or ' "(', too many to list.
     """
     starts = client.json_value_starts()
-    if not starts["null"] or not starts["string"]:
-        raise ValueError("Nullable string fields need a tokenizer that starts null and strings "
-                         'with single tokens after \'{"name":\'')
+    if not starts["null"]:
+        raise ValueError("Nullable string fields need a tokenizer that starts null with a single "
+                         'token after \'{"name":\'')
     null_ids = [token for token, _ in starts["null"]]
-    ids = null_ids + [token for token, _ in starts["string"]]
     if len(items) == 1:
-        by_id, meta, _ = client.score_candidates(items[0][0], ids)
+        by_id, meta, _ = client.score_candidates(items[0][0], null_ids)
         scored = [(by_id, meta)]
     else:
-        scored, _ = client.score_candidates_batch([prompt for prompt, _ in items], [ids] * len(items))
+        scored, _ = client.score_candidates_batch([prompt for prompt, _ in items], [null_ids] * len(items))
     nulls = []
     for (_, decision), (by_id, _) in zip(items, scored):
+        log_null = _logsumexp([by_id[i] for i in null_ids])
+        p_null = math.exp(log_null)
         probs = candidate_softmax(
-            {"null": _logsumexp([by_id[i] for i in null_ids]),
-             "value": _logsumexp([by_id[i] for i in ids if i not in null_ids])},
+            {"null": log_null, "value": math.log1p(-p_null) if p_null < 1 else -math.inf},
             temperature if mode == "sample" else 1.0)
         choice = _choose(probs, mode, rng)
         LOG.info("null_decision name=%s p_null=%.4f selected=%s", decision.name, probs["null"], choice)
@@ -695,17 +696,21 @@ def _decode_numeric_batch(
             )
             if signing[i]:
                 signing[i] = False
-                null_keys = [k for k in probs if candidates[int(k)][0] == "null"]
-                p_null = math.fsum(probs[k] for k in null_keys)
-                # Null asks "is there a value?": compare it with all the ways a value
-                # can start, not with the single most likely start.
+                null_keys = [k for k in raw if candidates[int(k)][0] == "null"]
+                values = {k: v for k, v in raw.items() if k not in null_keys}
+                # Null asks "is there a value?": add up all the ways a value can start
+                # first, so temperature applies to that question, not to each start.
                 if decision.nullable:
-                    choice = _choose({"null": p_null, "value": 1 - p_null}, mode, rng)
-                    LOG.info("numeric name=%s start=%s p_null=%.4f", decision.name, choice, p_null)
+                    null_probs = candidate_softmax(
+                        {"null": _logsumexp([raw[k] for k in null_keys]),
+                         "value": _logsumexp(list(values.values()))},
+                        temperature if mode == "sample" else 1.0)
+                    choice = _choose(null_probs, mode, rng)
+                    LOG.info("numeric name=%s start=%s p_null=%.4f", decision.name, choice, null_probs["null"])
                     if choice == "null":
                         outputs[i] = (None, prefixes[i] + candidates[int(null_keys[0])][1], "null")
                         continue
-                value_probs = {k: p / (1 - p_null) for k, p in probs.items() if k not in null_keys}
+                value_probs = candidate_softmax(values, temperature if mode == "sample" else 1.0)
                 kind, piece, next_text = candidates[int(_choose(value_probs, mode, rng))]
                 # Text, not tokens, goes to the server: ' -' + digits reads as the
                 # prompt ' ' + '-' + digits, which the server tokenizes naturally.
