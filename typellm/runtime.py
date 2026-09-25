@@ -810,11 +810,14 @@ def _execute_decisions(
     prefix = ""
     results: list[dict] = []
 
-    for index, decision in enumerate(decisions):
-        user_content = decision.opening_text()
+    def user_turn(index, decision):
+        content = decision.opening_text()
         if index == 0:
-            user_content = _user_content(context.rstrip() + "\n\n" + user_content, image_count)
-        messages.append({"role": "user", "content": user_content})
+            content = _user_content(context.rstrip() + "\n\n" + content, image_count)
+        return {"role": "user", "content": content}
+
+    for index, decision in enumerate(decisions):
+        messages.append(user_turn(index, decision))
         prefix = client.render_chat(messages, add_generation_prompt=True)
         key_prompt = prefix + decision.answer_prefill
         if decision.text_type and decision.nullable and _decide_nulls(
@@ -869,11 +872,8 @@ def _execute_decisions(
             orders = _choice_orderings(decision, rng)
             variant_prompts = []
             for variant, _order in orders:
-                content = variant.opening_text()
-                if index == 0:
-                    content = context.rstrip() + "\n\n" + content
                 variant_prompts.append(client.render_chat(
-                    messages[:-1] + [{"role": "user", "content": content}],
+                    messages[:-1] + [user_turn(index, variant)],
                     add_generation_prompt=True) + decision.label_prefill)
             scored, elapsed = client.score_candidates_batch(variant_prompts, [ids] * len(orders))
             probabilities = _mean_order_probabilities(scored, orders, label_tokens, probability_temperature)

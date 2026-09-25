@@ -167,6 +167,15 @@ class ImageRequestTests(unittest.TestCase):
             self.run_generate(images, questions=self.QUESTIONS, execution="sequential"), images)
         self.assert_images_attached(self.run_generate(images, questions=dag), images)
 
+    def test_sequential_permutations_keep_images_on_first_field(self):
+        images = [encode_image(PNG)]
+        questions = {"category": {**self.QUESTIONS["category"], "permutations": "all"}}
+        payloads = self.run_generate(images, questions=questions, execution="sequential")
+        self.assert_images_attached(payloads, images)
+        score_batches = [p for p in payloads if "token_ids_logprob" in p and isinstance(p["text"], list)]
+        self.assertEqual(len(score_batches), 1)
+        self.assertEqual(len(score_batches[0]["text"]), 2)
+
     def test_numeric_decoding_carries_the_images(self):
         client = TypeLLMClient(model="fake")
         client.sglang = FakeServerClient()
