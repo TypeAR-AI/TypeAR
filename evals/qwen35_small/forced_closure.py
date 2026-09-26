@@ -30,21 +30,26 @@ def main():
                     row = dict(model=args.model, case=name, execution=execution,
                                thinking_budget=budget, reasoning=[], closures=[])
                     request = backend._request
-                    finish = backend._finish_thinking
+                    complete = backend._complete_thinking
 
                     def record_request(endpoint, payload=None, **kwargs):
                         response = request(endpoint, payload, **kwargs)
                         params = payload.get('sampling_params', {}) if payload else {}
-                        if isinstance(params, dict) and params.get('stop') == ['</think>']:
-                            meta = response.get('meta_info', {})
-                            row['reasoning'].append(dict(
-                                max_new_tokens=params['max_new_tokens'],
-                                completion_tokens=meta.get('completion_tokens'),
-                                finish_reason=meta.get('finish_reason')))
+                        # A batch of prompts has one sampling-params dict and one response each.
+                        for item_params, item in (zip(params, response)
+                                                  if isinstance(params, list) and isinstance(response, list)
+                                                  else [(params, response)]):
+                            if isinstance(item_params, dict) and item_params.get('stop') == ['</think>']:
+                                meta = item.get('meta_info', {})
+                                row['reasoning'].append(dict(
+                                    max_new_tokens=item_params['max_new_tokens'],
+                                    completion_tokens=meta.get('completion_tokens'),
+                                    finish_reason=meta.get('finish_reason')))
                         return response
 
-                    def record_finish(prefix):
-                        completed = finish(prefix)
+                    # Single and batched thinking both close each prompt here, one at a time.
+                    def record_complete(prefix, response, image_tokens):
+                        completed = complete(prefix, response, image_tokens)
                         used = len(tokenizer.encode(completed, add_special_tokens=False))
                         row['closures'].append(dict(
                             forced=completed.endswith('\n\nI will now give the final answer.\n</think>\n\n'),
@@ -54,7 +59,7 @@ def main():
                         return completed
 
                     backend._request = record_request
-                    backend._finish_thinking = record_finish
+                    backend._complete_thinking = record_complete
                     started = time.monotonic()
                     try:
                         result = client.generate(context=context, questions=questions)
