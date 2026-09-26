@@ -21,6 +21,28 @@ class SGLangError(RuntimeError):
     pass
 
 
+# One character inside a JSON string: anything but a quote, backslash or control
+# character, or an escape sequence.
+_JSON_STRING_CHAR = r'(?:[^"\\\x00-\x1f]|\\["\\/bfnrt]|\\u[0-9a-fA-F]{4})'
+
+
+def _closed_json_string(text: str) -> str:
+    """Decode 'characters"}' written after an opening quote."""
+    if not text.endswith('"}'):
+        raise ValueError(text)
+    return json.loads('"' + text[:-1])
+
+
+def _partial_json_string(text: str) -> str:
+    """Decode characters cut off before the closing quote, dropping a split escape."""
+    for cut in range(min(len(text), 6) + 1):
+        try:
+            return json.loads('"' + text[:len(text) - cut] + '"')
+        except ValueError:
+            continue
+    raise ValueError(text)
+
+
 
 class SGLangClient:
     def __init__(
@@ -494,8 +516,9 @@ class SGLangClient:
 
         Returns {"null": [...], "positive": [...], "negative": [...], "string": [...]}
         as (token_id, text) pairs. Most tokenizers attach the space to the value:
-        ' null', ' -', ' "'; a positive number starts with a lone ' '. Kinds this
-        tokenizer does not split that way are left empty.
+        ' null', ' -', ' "'; a positive number starts with a lone ' '. The
+        spaceless 'null', '"' and '""' are listed too when they are single
+        tokens. Kinds this tokenizer does not split that way are left empty.
         """
         if self._json_value_starts is not None:
             return self._json_value_starts
@@ -504,6 +527,7 @@ class SGLangClient:
         starts: dict[str, list[tuple[int, str]]] = {"null": [], "positive": [], "negative": [], "string": []}
         for kind, sample, accept in (
             ("null", '{"k": null}', lambda piece: piece.strip() == "null"),
+            ("null", '{"k":null}', lambda piece: piece == "null"),
             ("positive", '{"k": 1}', lambda piece: piece != "" and piece.strip() == ""),
             ("negative", '{"k": -1}', lambda piece: piece.strip() == "-"),
             ("string", '{"k": "a"}', lambda piece: piece.strip() == '"'),
@@ -517,6 +541,15 @@ class SGLangClient:
             piece = piece.get("text") if isinstance(piece, Mapping) else None
             if isinstance(piece, str) and accept(piece) and (token, piece) not in starts[kind]:
                 starts[kind].append((token, piece))
+        # Spaceless starts ({"k":"a"}, {"k":null}) often merge with the colon
+        # ('":"'), so add them directly when they are single tokens.
+        for kind, piece in (("null", "null"), ("string", '"'), ("string", '""')):
+            try:
+                token = self.single_token(piece)
+            except ValueError:
+                continue
+            if token not in starts[kind]:
+                starts[kind].append(token)
         self._json_value_starts = starts
         return starts
 
@@ -639,53 +672,68 @@ class SGLangClient:
         *,
         temperature: float = 0,
         seed: int = 0,
-        keys: Sequence[str | None] | None = None,
+        open_quote: bool = False,
     ) -> list[str]:
         """Generate JSON strings in a native batch, then validate every value.
 
-        With a key, the string is generated as the one value of {"key": "..."},
-        the form chat models naturally answer in; the grammar fixes the key.
+        With open_quote, every prompt already ends with '{"name": "', so only the
+        string's characters and the closing '"}' are generated. A max length then
+        truncates: generation is capped near that many tokens and the string is
+        cut to that many characters, as a length-bounded grammar would.
         """
         if len(prefixes) != len(max_lengths):
             raise ValueError("prefixes and max_lengths must have the same length")
-        keys = [None] * len(prefixes) if keys is None else list(keys)
-        if len(keys) != len(prefixes):
-            raise ValueError("prefixes and keys must have the same length")
         if not prefixes:
             return []
         params = []
-        for limit, key in zip(max_lengths, keys):
-            schema: dict[str, Any] = {"type": "string"}
-            if limit is not None:
-                schema["maxLength"] = limit
-            if key is not None:
-                schema = {"type": "object", "properties": {key: schema},
-                          "required": [key], "additionalProperties": False}
-            params.append({"max_new_tokens": self.text_max_tokens,
-                           "temperature": temperature, "sampling_seed": seed,
-                           "json_schema": json.dumps(schema)})
+        for limit in max_lengths:
+            budget = self.text_max_tokens
+            if open_quote:
+                # End with the object's closing brace too: models close {"name": "text"}
+                # with the single token '"}', which a bare '"' would rule out. A
+                # length-bounded regex is several times slower, so the limit is
+                # applied by truncation below instead.
+                constraint = {"regex": _JSON_STRING_CHAR + '*"\\}'}
+                if limit is not None:
+                    # Every token holds at least one character.
+                    budget = min(budget, limit + 2)
+            else:
+                schema: dict[str, Any] = {"type": "string"}
+                if limit is not None:
+                    schema["maxLength"] = limit
+                constraint = {"json_schema": json.dumps(schema)}
+            params.append({"max_new_tokens": budget,
+                           "temperature": temperature, "sampling_seed": seed, **constraint})
         response = self._generate({"text": list(prefixes), "sampling_params": params})
         if isinstance(response, Mapping) and len(prefixes) == 1:
             response = [response]
         if not isinstance(response, list) or len(response) != len(prefixes):
             raise SGLangError("Unexpected text batch response shape")
         values = []
-        for item, limit, key in zip(response, max_lengths, keys):
+        for item, limit in zip(response, max_lengths):
             if not isinstance(item, Mapping):
                 raise SGLangError("Invalid text response")
             meta = item.get("meta_info", {})
             finish = meta.get("finish_reason", {}) if isinstance(meta, Mapping) else {}
             kind = finish.get("type") if isinstance(finish, Mapping) else finish
-            if kind != "stop":
+            # With a max length, running out of tokens mid-string is a truncation.
+            truncated = open_quote and limit is not None and kind == "length"
+            if kind != "stop" and not truncated:
                 raise SGLangError(f"Text generation did not complete normally: {finish!r}")
             try:
-                value = json.loads(item["text"])
-                if key is not None:
-                    value = value[key]
+                text = item["text"]
+                if open_quote:
+                    value = _partial_json_string(text) if truncated else _closed_json_string(text)
+                else:
+                    value = json.loads(text)
             except (KeyError, TypeError, ValueError) as exc:
                 raise SGLangError("Text generation returned an invalid JSON string") from exc
             if not isinstance(value, str):
                 raise SGLangError("Text generation returned a non-string value")
+            if open_quote and limit is not None:
+                value = value[:limit]
+                if value and 0xD800 <= ord(value[-1]) <= 0xDBFF:
+                    value = value[:-1]  # never leave half of a surrogate pair
             if any(0xD800 <= ord(c) <= 0xDFFF for c in value):
                 raise SGLangError("Text generation returned an unpaired Unicode surrogate")
             if limit is not None and len(value) > limit:

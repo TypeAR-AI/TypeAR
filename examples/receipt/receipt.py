@@ -10,12 +10,9 @@ HERE = Path(__file__).resolve().parent
 RUPIAH = 'in rupiah as a plain number; the receipt uses commas as thousands separators, so 12,500 is 12500'
 
 QUESTIONS = {
-    'first_item': {'type': 'string', 'maxLength': 40,
-                   'instructions': 'Name of the first line item, exactly as printed, including any misspellings.'},
-    'second_item': {'type': 'string', 'maxLength': 40,
-                    'instructions': 'Name of the second line item, exactly as printed.'},
-    'third_item': {'type': 'string', 'maxLength': 40,
-                   'instructions': 'Name of the third line item, exactly as printed.'},
+    'first_item': {'type': 'string', 'instructions': 'Name of the first line item, exactly as printed, including any misspellings.'},
+    'second_item': {'type': 'string', 'instructions': 'Name of the second line item, exactly as printed.'},
+    'third_item': {'type': 'string', 'instructions': 'Name of the third line item, exactly as printed.'},
     'item_lines': {'type': 'integer', 'instructions': 'How many line items are listed?'},
     'first_item_quantity': {'type': 'integer', 'instructions': 'Quantity of the first line item.'},
     'subtotal': {'type': 'number', 'instructions': f'Subtotal {RUPIAH}.'},
@@ -29,7 +26,7 @@ QUESTIONS = {
                          'instructions': 'Discount as a percentage of the subtotal.'},
     'change_is_correct': {'type': 'boolean', 'depends_on': ['total', 'cash', 'change'],
                           'instructions': 'Does change equal cash minus total?'},
-    'expense_note': {'type': 'string', 'maxLength': 120, 'depends_on': ['first_item', 'second_item', 'third_item', 'total'],
+    'expense_note': {'type': 'string', 'depends_on': ['first_item', 'second_item', 'third_item', 'total'],
                      'instructions': 'One short sentence for an expense report describing this purchase and its total.'},
 }
 

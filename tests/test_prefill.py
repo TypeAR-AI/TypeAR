@@ -1,4 +1,3 @@
-import json
 import unittest
 
 from typellm import TypeLLMClient
@@ -41,9 +40,9 @@ class PrefillTests(unittest.TestCase):
         client, result = self.run_generate(self.QUESTIONS)
         self.assertEqual(result, {"total": 7, "item": "blue", "paid": True})
         [text] = [p for p in client.sglang.payloads if not isinstance(p["sampling_params"], dict)
-                  and "json_schema" in p["sampling_params"][0]]
-        # Strings are generated as the whole one-key object; the grammar fixes the key.
-        self.assertEqual(json.loads(text["sampling_params"][0]["json_schema"])["required"], ["item"])
+                  and "regex" in p["sampling_params"][0]]
+        # Strings continue from '{"item": "'; the model writes the characters and '"}'.
+        self.assertTrue(text["text"][0].endswith('{"item": "'))
         numbers = [p for p in client.sglang.requests("score") if isinstance(p["text"], str)]
         # The sign is chosen at the key, as the tokenizer splits {"total": 7}; digits follow the space.
         self.assertTrue(numbers[0]["text"].endswith('{"total":'))
@@ -74,6 +73,48 @@ class PrefillTests(unittest.TestCase):
         child = client.last_prompts[1]
         self.assertIn('{"total": 7', child)
         self.assertTrue(child.startswith(client.last_prompts[0].rsplit('{"total": ', 1)[0]))
+
+
+def text_reply(text, finish="stop"):
+    return lambda path, payload=None, **kw: [
+        {"text": text, "meta_info": {"finish_reason": {"type": finish}}} for _ in payload["text"]]
+
+
+class StringConstraintTests(unittest.TestCase):
+    def test_max_length_caps_tokens_not_the_grammar(self):
+        client = FakeServer()
+        client.generate_texts(['{"a": "', '{"b": "'], [12, None], open_quote=True)
+        [payload] = [p for p in client.payloads if "regex" in p["sampling_params"][0]]
+        first, second = payload["sampling_params"]
+        self.assertEqual(first["regex"], second["regex"])
+        self.assertTrue(first["regex"].endswith('*"\\}'))
+        self.assertEqual((first["max_new_tokens"], second["max_new_tokens"]), (14, client.text_max_tokens))
+
+    def test_escaped_quotes_decode_as_json(self):
+        client = FakeServer()
+        client._request = text_reply('say \\"hi\\""}')
+        self.assertEqual(client.generate_texts(['{"a": "'], [None], open_quote=True), ['say "hi"'])
+
+    def test_a_long_finished_string_is_cut_to_max_length(self):
+        client = FakeServer()
+        client._request = text_reply('Edamame and more"}')
+        self.assertEqual(client.generate_texts(['{"a": "'], [7], open_quote=True), ["Edamame"])
+
+    def test_running_out_of_tokens_truncates_and_closes(self):
+        client = FakeServer()
+        client._request = text_reply("Edamame and", finish="length")
+        self.assertEqual(client.generate_texts(['{"a": "'], [7], open_quote=True), ["Edamame"])
+        client._request = text_reply("tab\\", finish="length")  # cut inside an escape
+        self.assertEqual(client.generate_texts(['{"a": "'], [7], open_quote=True), ["tab"])
+        client._request = text_reply("\u5bff\u53f8\u5bff", finish="length")
+        self.assertEqual(client.generate_texts(['{"a": "'], [2], open_quote=True), ["寿司"])
+
+    def test_without_max_length_an_unfinished_string_still_fails(self):
+        from typellm import SGLangError
+        client = FakeServer()
+        client._request = text_reply("Edamame and", finish="length")
+        with self.assertRaisesRegex(SGLangError, "did not complete normally"):
+            client.generate_texts(['{"a": "'], [None], open_quote=True)
 
 
 if __name__ == "__main__":

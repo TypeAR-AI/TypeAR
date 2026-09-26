@@ -12,7 +12,7 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 
 # Multi-character pieces, split the way Qwen-style tokenizers split JSON:
 # {"k": null} -> '{"' 'k' '":' ' null' '}'. Everything else is one char per token.
-PIECES = {'{"': 950, '":': 951, " null": 819, " -": 900, ' "': 328, ' ""': 901}
+PIECES = {'{"': 950, '":': 951, " null": 819, "null": 2827, " -": 900, ' "': 328, ' ""': 901}
 
 
 def fake_tokenize(text):

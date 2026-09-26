@@ -198,7 +198,7 @@ result = client.generate(
     images=["receipt.jpg"],
     questions={
         "tip": {"type": ["number", "null"], "instructions": "Tip amount."},
-        "table": {"type": ["string", "null"], "maxLength": 10, "instructions": "Table number."},
+        "table": {"type": ["string", "null"], "instructions": "Table number."},
         "paid_in_cash": {"type": ["boolean", "null"], "instructions": "Was the bill paid in cash?"},
         "card": {"type": ["string", "null"], "enum": ["VISA", "MASTERCARD", None],
                  "instructions": "Card network, if paid by card."},

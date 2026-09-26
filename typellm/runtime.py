@@ -37,10 +37,9 @@ def _closed_label(decision: "Choice", label: str) -> str:
     return decision.label_prefill + label + '"}' if decision.label_prefill else label
 
 
-def _text_kwargs(decisions: Sequence["Choice"]) -> dict[str, list[str | None]]:
-    """Strings are generated as {"name": "..."}; pass keys only when there are names."""
-    keys = [decision.name if decision.answer_prefill else None for decision in decisions]
-    return {"keys": keys} if any(key is not None for key in keys) else {}
+def _string_prompt(prompt: str, decision: "Choice") -> str:
+    """Prefill '{"name": "' for a string; the model writes its characters and closes it."""
+    return prompt + decision.answer_prefill + (' "' if decision.answer_prefill else "")
 
 
 def _logsumexp(values: Sequence[float]) -> float:
@@ -705,7 +704,8 @@ def _decode_numeric_batch(
                     choice = _choose({"null": p_null, "value": 1 - p_null}, mode, rng)
                     LOG.info("numeric name=%s start=%s p_null=%.4f", decision.name, choice, p_null)
                     if choice == "null":
-                        outputs[i] = (None, prefixes[i] + candidates[int(null_keys[0])][1], "null")
+                        # Either null token counts; the prompt keeps the canonical {"name": null}.
+                        outputs[i] = (None, prefixes[i] + " null}", "null")
                         continue
                 value_probs = {k: p / (1 - p_null) for k, p in probs.items() if k not in null_keys}
                 kind, piece, next_text = candidates[int(_choose(value_probs, mode, rng))]
@@ -826,9 +826,9 @@ def _execute_decisions(
                             "label": None, "value": None, "probabilities": None})
             continue
         if decision.text_type:
-            value = client.generate_texts([prefix], [decision.max_length],
+            value = client.generate_texts([_string_prompt(prefix, decision)], [decision.max_length],
                 temperature=0 if mode == "argmax" else temperature,
-                seed=rng.randrange(2**31), **_text_kwargs([decision]))[0]
+                seed=rng.randrange(2**31), open_quote=bool(decision.answer_prefill))[0]
             messages.append({"role": "assistant", "content": _closed_answer(decision, json.dumps(value, ensure_ascii=False))})
             prefix = client.render_chat(messages, add_generation_prompt=False)
             results.append({"name": decision.name, "question": decision.question,
@@ -1098,11 +1098,11 @@ def _execute_batch_decisions(
 
     if text_pending:
         values = client.generate_texts(
-            [prompt for _, _, _, prompt in text_pending],
+            [_string_prompt(prompt, decision) for _, decision, _, prompt in text_pending],
             [decision.max_length for _, decision, _, _ in text_pending],
             temperature=0 if mode == "argmax" else temperature,
             seed=rng.randrange(2**31),
-            **_text_kwargs([decision for _, decision, _, _ in text_pending]),
+            open_quote=all(decision.answer_prefill for _, decision, _, _ in text_pending),
         )
         for (index, decision, messages, prompt), value in zip(text_pending, values):
             completed = complete(prompt, messages, _closed_answer(decision, json.dumps(value, ensure_ascii=False)))

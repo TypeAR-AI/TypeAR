@@ -11,8 +11,7 @@ result = client.generate(
     context="Read the attached photo of a restaurant receipt.",
     images=["receipt.jpg"],
     questions={
-        "first_item": {"type": "string", "maxLength": 40,
-                       "instructions": "Name of the first line item, exactly as printed."},
+        "first_item": {"type": "string", "instructions": "Name of the first line item, exactly as printed."},
         "item_lines": {"type": "integer", "instructions": "How many line items are listed?"},
         "subtotal": {"type": "number", "instructions": "Subtotal in rupiah as a plain number."},
         "discount": {"type": "number", "instructions": "Discount in rupiah as a plain number."},

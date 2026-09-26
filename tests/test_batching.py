@@ -49,6 +49,9 @@ class FakeServer(SGLangClient):
                     [[0.0 if t == pick else -9.0, t, "?"] for t in ids]]}})
         elif params[0].get("stop") == [THINK_STOP]:
             out = [{"text": "Reasoned." + THINK_STOP, "meta_info": {}} for _ in texts]
+        elif "regex" in params[0]:
+            # The prompt ends with '{"name": "'; the string's characters and '"}' follow.
+            out = [{"text": 'blue"}', "meta_info": {"finish_reason": {"type": "stop"}}} for _ in texts]
         elif "json_schema" in params[0]:
             out = []
             for p in params:

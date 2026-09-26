@@ -1,5 +1,6 @@
 import math
 import unittest
+from unittest.mock import patch
 
 from typellm import TypeLLMClient
 
@@ -60,11 +61,38 @@ class SplitValueServer(FakeServer):
         return super()._request(path, payload, allow_text=allow_text)
 
 
+class SpacelessNullServer(FakeServer):
+    """Prefers the spaceless 'null' ({"t":null}) wherever it is offered."""
+
+    def _request(self, path, payload=None, *, allow_text=False):
+        if path == "/generate" and "token_ids_logprob" in payload:
+            ids = payload["token_ids_logprob"]
+            self.payloads.append(payload)
+            pick = 2827 if 2827 in ids else 1 if 1 in ids else ord("7")
+            return {"meta_info": {"output_token_ids_logprobs": [
+                [[0.0 if t == pick else -9.0, t, "?"] for t in ids]]}}
+        return super()._request(path, payload, allow_text=allow_text)
+
+
+class KeyServer(FakeServer):
+    """Scores the prefilled key with fixed probabilities; the rest is on unscored tokens."""
+
+    def __init__(self, weights):
+        super().__init__()
+        self.weights = weights
+
+    def _request(self, path, payload=None, *, allow_text=False):
+        if path == "/generate" and "token_ids_logprob" in payload and 819 in payload["token_ids_logprob"]:
+            return {"meta_info": {"output_token_ids_logprobs": [
+                [[math.log(self.weights.get(t, 1e-9)), t, "?"] for t in payload["token_ids_logprob"]]]}}
+        return super()._request(path, payload, allow_text=allow_text)
+
+
 class ValueStartTests(unittest.TestCase):
     def test_starts_are_read_from_the_tokenizer(self):
         self.assertEqual(FakeServer().json_value_starts(), {
-            "null": [(819, " null")], "positive": [(ord(" "), " ")],
-            "negative": [(900, " -")], "string": [(328, ' "'), (901, ' ""')],
+            "null": [(819, " null"), (2827, "null")], "positive": [(ord(" "), " ")],
+            "negative": [(900, " -")], "string": [(328, ' "'), (901, ' ""'), (ord('"'), '"')],
         })
 
     def test_a_tokenizer_without_an_empty_string_token_still_works(self):
@@ -72,7 +100,7 @@ class ValueStartTests(unittest.TestCase):
         try:
             client = TypeLLMClient(model="fake")
             client.sglang = FakeServer()
-            self.assertEqual(client.sglang.json_value_starts()["string"], [(328, ' "')])
+            self.assertEqual(client.sglang.json_value_starts()["string"], [(328, ' "'), (ord('"'), '"')])
             result = client.generate(context="Receipt", questions={"note": {"type": ["string", "null"]}})
             self.assertIn(result["note"], (None, "blue"))
         finally:
@@ -108,6 +136,48 @@ class ValueStartTests(unittest.TestCase):
         client = TypeLLMClient(model="fake")
         client.sglang = SplitValueServer()
         self.assertEqual(client.generate(context="Log", questions={"t": {"type": ["integer", "null"]}}), {"t": 7})
+
+
+    def test_a_spaceless_null_counts_and_is_written_with_the_space(self):
+        client = TypeLLMClient(model="fake")
+        client.sglang = SpacelessNullServer()
+        result = client.generate(context="Log", questions={"t": {"type": ["number", "null"]}}, execution="sequential")
+        self.assertEqual(result, {"t": None})
+        self.assertIn('{"t": null}', client.last_prompt)
+        self.assertNotIn('{"t":null', client.last_prompt)
+
+    def test_a_spaceless_quote_counts_and_the_string_is_written_with_the_space(self):
+        class SpacelessQuoteServer(SpacelessNullServer):
+            def _request(self, path, payload=None, *, allow_text=False):
+                if path == "/generate" and "token_ids_logprob" in payload:
+                    ids = payload["token_ids_logprob"]
+                    self.payloads.append(payload)
+                    return {"meta_info": {"output_token_ids_logprobs": [
+                        [[0.0 if t == ord('"') else -9.0, t, "?"] for t in ids]]}}
+                return FakeServer._request(self, path, payload, allow_text=allow_text)
+
+        client = TypeLLMClient(model="fake")
+        client.sglang = SpacelessQuoteServer()
+        result = client.generate(context="Log", questions={"s": {"type": ["string", "null"]}})
+        self.assertEqual(result, {"s": "blue"})
+        [text] = [p for p in client.sglang.payloads
+                  if not isinstance(p["sampling_params"], dict) and "regex" in p["sampling_params"][0]]
+        self.assertTrue(text["text"][0].endswith('{"s": "'))
+
+    def test_a_spaceless_null_also_counts_for_strings(self):
+        client = TypeLLMClient(model="fake")
+        client.sglang = SpacelessNullServer()
+        self.assertEqual(client.generate(context="Log", questions={"s": {"type": ["string", "null"]}}), {"s": None})
+
+
+    def test_null_written_without_the_space_also_counts_as_null(self):
+        # ' null' 0.30 + 'null' 0.25 = 0.55 is null, though ' null' alone loses to the rest.
+        with patch.dict(fake_vocab.PIECES, {"null": 2827}):
+            client = TypeLLMClient(model="fake")
+            client.sglang = KeyServer({819: 0.30, 2827: 0.25})
+            self.assertEqual(client.sglang.json_value_starts()["null"], [(819, " null"), (2827, "null")])
+            result = client.generate(context="Receipt", questions={"note": {"type": ["string", "null"]}})
+        self.assertEqual(result, {"note": None})
 
 
 if __name__ == "__main__":

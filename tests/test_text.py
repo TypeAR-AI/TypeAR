@@ -72,12 +72,12 @@ class TextTests(unittest.TestCase):
         client.sglang._context_length_cache=8192
         client.sglang._chat_tokenizer=FakeChatTokenizer()
         client.sglang._chat_tokenizer.apply_chat_template=lambda *args,**kw: "assistant\n<think>\n" if kw["enable_thinking"] else "completed"
-        responses=[{'text':'brief</think>'},[{'text':'{"t": "done"}','meta_info':{'finish_reason':{'type':'stop'}}}]]
+        responses=[{'text':'brief</think>'},[{'text':'done"}','meta_info':{'finish_reason':{'type':'stop'}}}]]
         with patch.object(client.sglang,'_request',side_effect=responses) as request:
             self.assertEqual(client.generate(state='x',questions={'t':{'type':'string'}}),{'t':'done'})
             self.assertIn('</think>',request.call_args.args[1]['text'][0])
-            schema=json.loads(request.call_args.args[1]['sampling_params'][0]['json_schema'])
-            self.assertEqual(schema['required'],['t'])
+            self.assertTrue(request.call_args.args[1]['text'][0].endswith('{"t": "'))
+            self.assertIn('regex',request.call_args.args[1]['sampling_params'][0])
 
 if __name__=='__main__':
     unittest.main()

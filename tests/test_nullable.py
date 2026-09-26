@@ -1,4 +1,3 @@
-import json
 import unittest
 
 from typellm import SchemaError, TypeLLMClient, compile_json_schema
@@ -69,12 +68,11 @@ class RuntimeTests(unittest.TestCase):
             "note": {"type": ["string", "null"], "maxLength": 20}, "name": {"type": "string"},
         })
         self.assertEqual(result, {"note": None, "name": "blue"})
-        # Only the non-null string is generated, as the value of {"name": ...}.
+        # Only the non-null string is generated, continuing from '{"name": "'.
         [text] = [p for p in client.sglang.payloads
-                  if not isinstance(p["sampling_params"], dict) and "json_schema" in p["sampling_params"][0]]
+                  if not isinstance(p["sampling_params"], dict) and "regex" in p["sampling_params"][0]]
         self.assertEqual(width(text), 1)
-        schema = json.loads(text["sampling_params"][0]["json_schema"])
-        self.assertEqual(schema["properties"], {"name": {"type": "string"}})
+        self.assertTrue(text["text"][0].endswith('{"name": "'))
 
     def test_nullable_boolean_scores_null_as_a_choice(self):
         client = TypeLLMClient(model="fake")

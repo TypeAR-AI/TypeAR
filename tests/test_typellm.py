@@ -543,7 +543,7 @@ class ThinkingTests(unittest.TestCase):
                 return thinking._finish_thinking(prompt + "<think>") if add_generation_prompt else prompt
             fake.render_chat = render_with_thinking
             def generate_texts(prefixes, limits, **kwargs):
-                self.assertTrue(all(p.endswith('</think>\n\n') for p in prefixes))
+                self.assertTrue(all(p.endswith('</think>\n\n{"t": "') for p in prefixes))
                 return ["blue"] * len(prefixes)
             fake.generate_texts = generate_texts
             client = TypeLLMClient(execution=execution)
