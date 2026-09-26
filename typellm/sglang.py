@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any, Iterator, Mapping, Sequence
 
-from .numeric import load_numeric_token_table
+from .numeric import load_token_tables
 from .protocol import detect_protocol
 
 
@@ -26,15 +26,24 @@ class SGLangError(RuntimeError):
 _JSON_STRING_CHAR = r'(?:[^"\\\x00-\x1f]|\\["\\/bfnrt]|\\u[0-9a-fA-F]{4})'
 
 
+def _after_open_quote(text: str) -> str:
+    """Drop the ' "' or '"' the model wrote after '{"name":'."""
+    if not text.startswith(('"', ' "')):
+        raise ValueError(text)
+    return text[text.index('"') + 1:]
+
+
 def _closed_json_string(text: str) -> str:
-    """Decode 'characters"}' written after an opening quote."""
+    """Decode ' "characters"}' written after '{"name":'."""
+    text = _after_open_quote(text)
     if not text.endswith('"}'):
         raise ValueError(text)
     return json.loads('"' + text[:-1])
 
 
 def _partial_json_string(text: str) -> str:
-    """Decode characters cut off before the closing quote, dropping a split escape."""
+    """Decode a string cut off before its closing quote, dropping a split escape."""
+    text = _after_open_quote(text)
     for cut in range(min(len(text), 6) + 1):
         try:
             return json.loads('"' + text[:len(text) - cut] + '"')
@@ -80,6 +89,7 @@ class SGLangClient:
         self._json_value_starts: dict[str, list[tuple[int, str]]] | None = None
         self._model_info_cache: Mapping[str, Any] | None = None
         self._numeric_tokens: list[tuple[int, str]] | None = None
+        self._string_start_tokens: list[tuple[int, str]] | None = None
         self._chat_tokenizer: Any | None = None
         self._image_placeholder_cache: str | None = None
         # Per-thread/task, so concurrent generate() calls never share images.
@@ -256,13 +266,22 @@ class SGLangClient:
             "Could not discover the tokenizer used by SGLang; pass tokenizer=..."
         )
 
+    def _load_token_tables(self) -> None:
+        tables = load_token_tables(self._tokenizer_source(), self.numeric_cache_dir)
+        self._numeric_tokens = tables["tokens"]
+        self._string_start_tokens = tables["string_starts"]
+
     def numeric_token_pieces(self) -> list[tuple[int, str]]:
         """Return the cached numeric-token table for the served model tokenizer."""
         if self._numeric_tokens is None:
-            self._numeric_tokens = load_numeric_token_table(
-                self._tokenizer_source(), self.numeric_cache_dir
-            )
+            self._load_token_tables()
         return self._numeric_tokens
+
+    def string_start_pieces(self) -> list[tuple[int, str]]:
+        """Every token that can start a string value after '{"k":', such as ' "', '"' or '"This'."""
+        if self._string_start_tokens is None:
+            self._load_token_tables()
+        return self._string_start_tokens
 
     def _get_chat_tokenizer(self) -> Any:
         if self._chat_tokenizer is None:
@@ -536,7 +555,8 @@ class SGLangClient:
         as (token_id, text) pairs. Most tokenizers attach the space to the value:
         ' null', ' -', ' "'; a positive number starts with a lone ' '. The
         spaceless 'null', '"' and '""' are listed too when they are single
-        tokens. Kinds this tokenizer does not split that way are left empty.
+        tokens. Strings take every token that can start one, from the vocabulary.
+        Kinds this tokenizer does not split that way are left empty.
         """
         if self._json_value_starts is not None:
             return self._json_value_starts
@@ -545,11 +565,8 @@ class SGLangClient:
         starts: dict[str, list[tuple[int, str]]] = {"null": [], "positive": [], "negative": [], "string": []}
         for kind, sample, accept in (
             ("null", '{"k": null}', lambda piece: piece.strip() == "null"),
-            ("null", '{"k":null}', lambda piece: piece == "null"),
             ("positive", '{"k": 1}', lambda piece: piece != "" and piece.strip() == ""),
             ("negative", '{"k": -1}', lambda piece: piece.strip() == "-"),
-            ("string", '{"k": "a"}', lambda piece: piece.strip() == '"'),
-            ("string", '{"k": ""}', lambda piece: piece.strip() == '""'),
         ):
             ids = self._tokenize(sample)
             if ids[:len(key_ids)] != key_ids or len(ids) <= len(key_ids):
@@ -559,15 +576,17 @@ class SGLangClient:
             piece = piece.get("text") if isinstance(piece, Mapping) else None
             if isinstance(piece, str) and accept(piece) and (token, piece) not in starts[kind]:
                 starts[kind].append((token, piece))
-        # Spaceless starts ({"k":"a"}, {"k":null}) often merge with the colon
-        # ('":"'), so add them directly when they are single tokens.
-        for kind, piece in (("null", "null"), ("string", '"'), ("string", '""')):
+        # A spaceless {"k":null} often merges with the colon ('":null'), so add
+        # 'null' directly when it is a single token. Only next to ' null': without
+        # it, {"k": null} starts with the space numbers share and null is hidden.
+        if starts["null"]:
             try:
-                token = self.single_token(piece)
+                token = self.single_token("null")
             except ValueError:
-                continue
-            if token not in starts[kind]:
-                starts[kind].append(token)
+                token = None
+            if token is not None and token not in starts["null"]:
+                starts["null"].append(token)
+        starts["string"] = list(self.string_start_pieces())
         self._json_value_starts = starts
         return starts
 
@@ -690,14 +709,16 @@ class SGLangClient:
         *,
         temperature: float = 0,
         seed: int = 0,
-        open_quote: bool = False,
+        after_key: bool = False,
     ) -> list[str]:
         """Generate JSON strings in a native batch, then validate every value.
 
-        With open_quote, every prompt already ends with '{"name": "', so only the
-        string's characters and the closing '"}' are generated. A max length then
-        truncates: generation is capped near that many tokens and the string is
-        cut to that many characters, as a length-bounded grammar would.
+        With after_key, every prompt ends with '{"name":', and the model writes the
+        opening quote, the characters and the closing '"}'. Writing the quote
+        itself lets it start with a merged token such as ' "$', which keeps the
+        first character. A max length then truncates: generation is capped near
+        that many tokens and the string is cut to that many characters, as a
+        length-bounded grammar would.
         """
         if len(prefixes) != len(max_lengths):
             raise ValueError("prefixes and max_lengths must have the same length")
@@ -706,15 +727,15 @@ class SGLangClient:
         params = []
         for limit in max_lengths:
             budget = self.text_max_tokens
-            if open_quote:
+            if after_key:
                 # End with the object's closing brace too: models close {"name": "text"}
                 # with the single token '"}', which a bare '"' would rule out. A
                 # length-bounded regex is several times slower, so the limit is
                 # applied by truncation below instead.
-                constraint = {"regex": _JSON_STRING_CHAR + '*"\\}'}
+                constraint = {"regex": ' ?"' + _JSON_STRING_CHAR + '*"\\}'}
                 if limit is not None:
-                    # Every token holds at least one character.
-                    budget = min(budget, limit + 2)
+                    # Every token holds at least one character, besides the quotes.
+                    budget = min(budget, limit + 3)
             else:
                 schema: dict[str, Any] = {"type": "string"}
                 if limit is not None:
@@ -735,12 +756,12 @@ class SGLangClient:
             finish = meta.get("finish_reason", {}) if isinstance(meta, Mapping) else {}
             kind = finish.get("type") if isinstance(finish, Mapping) else finish
             # With a max length, running out of tokens mid-string is a truncation.
-            truncated = open_quote and limit is not None and kind == "length"
+            truncated = after_key and limit is not None and kind == "length"
             if kind != "stop" and not truncated:
                 raise SGLangError(f"Text generation did not complete normally: {finish!r}")
             try:
                 text = item["text"]
-                if open_quote:
+                if after_key:
                     value = _partial_json_string(text) if truncated else _closed_json_string(text)
                 else:
                     value = json.loads(text)
@@ -748,7 +769,7 @@ class SGLangClient:
                 raise SGLangError("Text generation returned an invalid JSON string") from exc
             if not isinstance(value, str):
                 raise SGLangError("Text generation returned a non-string value")
-            if open_quote and limit is not None:
+            if after_key and limit is not None:
                 value = value[:limit]
                 if value and 0xD800 <= ord(value[-1]) <= 0xDBFF:
                     value = value[:-1]  # never leave half of a surrogate pair

@@ -4,7 +4,7 @@ import unittest
 from typellm import SGLangClient, TypeLLMClient
 from typellm.images import encode_image
 
-from tests.test_images import PNG, VisionTokenizer, fake_detokenize, fake_tokenize
+from tests.test_images import PNG, VisionTokenizer, fake_detokenize, fake_string_starts, fake_tokenize
 
 THINK_STOP = "</think>"
 
@@ -25,6 +25,7 @@ class FakeServer(SGLangClient):
         super().__init__(model="fake", thinking=thinking)
         self._chat_tokenizer = ThinkingTokenizer()
         self._numeric_tokens = [(ord(c), c) for c in "-0123456789."]
+        self._string_start_tokens = fake_string_starts()
         self._context_length_cache = 100_000
         self.payloads = []
 
@@ -50,8 +51,8 @@ class FakeServer(SGLangClient):
         elif params[0].get("stop") == [THINK_STOP]:
             out = [{"text": "Reasoned." + THINK_STOP, "meta_info": {}} for _ in texts]
         elif "regex" in params[0]:
-            # The prompt ends with '{"name": "'; the string's characters and '"}' follow.
-            out = [{"text": 'blue"}', "meta_info": {"finish_reason": {"type": "stop"}}} for _ in texts]
+            # The prompt ends with '{"name":'; the quote, the characters and '"}' follow.
+            out = [{"text": ' "blue"}', "meta_info": {"finish_reason": {"type": "stop"}}} for _ in texts]
         elif "json_schema" in params[0]:
             out = []
             for p in params:

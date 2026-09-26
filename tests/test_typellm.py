@@ -221,6 +221,7 @@ class JsonSchemaCompilerTests(unittest.TestCase):
             cache_file.write_text("{truncated", encoding="utf-8")
             self.assertEqual(load("source", directory), [(5, "5")])
             self.assertIn('"tokens":[[5,"5"]]', cache_file.read_text(encoding="utf-8"))
+            self.assertEqual(typellm.numeric.load_token_tables("source", directory)["string_starts"], [])
 
     def test_boolean(self):
         [decision] = compile_json_schema(
@@ -541,7 +542,7 @@ class ThinkingTests(unittest.TestCase):
                 return thinking._finish_thinking(prompt + "<think>") if add_generation_prompt else prompt
             fake.render_chat = render_with_thinking
             def generate_texts(prefixes, limits, **kwargs):
-                self.assertTrue(all(p.endswith('</think>\n\n{"t": "') for p in prefixes))
+                self.assertTrue(all(p.endswith('</think>\n\n{"t":') for p in prefixes))
                 return ["blue"] * len(prefixes)
             fake.generate_texts = generate_texts
             client = TypeLLMClient()

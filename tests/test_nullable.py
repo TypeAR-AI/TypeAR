@@ -72,7 +72,7 @@ class RuntimeTests(unittest.TestCase):
         [text] = [p for p in client.sglang.payloads
                   if not isinstance(p["sampling_params"], dict) and "regex" in p["sampling_params"][0]]
         self.assertEqual(width(text), 1)
-        self.assertTrue(text["text"][0].endswith('{"name": "'))
+        self.assertTrue(text["text"][0].endswith('{"name":'))
 
     def test_nullable_boolean_scores_null_as_a_choice(self):
         client = TypeLLMClient(model="fake")

@@ -37,11 +37,6 @@ def _closed_label(decision: "Choice", label: str) -> str:
     return decision.label_prefill + label + '"}' if decision.label_prefill else label
 
 
-def _string_prompt(prompt: str, decision: "Choice") -> str:
-    """Prefill '{"name": "' for a string; the model writes its characters and closes it."""
-    return prompt + decision.answer_prefill + (' "' if decision.answer_prefill else "")
-
-
 def _logsumexp(values: Sequence[float]) -> float:
     pivot = max(values)
     return pivot + math.log(math.fsum(math.exp(v - pivot) for v in values))
@@ -645,10 +640,15 @@ def _decode_numeric_batch(
                 null_keys = [k for k in probs if candidates[int(k)][0] == "null"]
                 p_null = math.fsum(probs[k] for k in null_keys)
                 # Null asks "is there a value?": compare it with all the ways a value
-                # can start, not with the single most likely start.
+                # can start, not with the single most likely start. The starts are
+                # added up before temperature applies, as for strings.
                 if decision.nullable:
-                    choice = _choose({"null": p_null, "value": 1 - p_null}, mode, rng)
-                    LOG.info("numeric name=%s start=%s p_null=%.4f", decision.name, choice, p_null)
+                    grouped = candidate_softmax(
+                        {"null": _logsumexp([raw[k] for k in null_keys]),
+                         "value": _logsumexp([v for k, v in raw.items() if k not in null_keys])},
+                        temperature if mode == "sample" else 1.0)
+                    choice = _choose(grouped, mode, rng)
+                    LOG.info("numeric name=%s start=%s p_null=%.4f", decision.name, choice, grouped["null"])
                     if choice == "null":
                         # Either null token counts; the prompt keeps the canonical {"name": null}.
                         outputs[i] = (None, prefixes[i] + " null}", "null")
@@ -926,11 +926,13 @@ def _execute_batch_decisions(
 
     if text_pending:
         values = client.generate_texts(
-            [_string_prompt(prompt, decision) for _, decision, _, prompt in text_pending],
+            # From {"name": the model picks the string's first token, quote included,
+            # among the same starts the null decision weighed.
+            [prompt + decision.answer_prefill for _, decision, _, prompt in text_pending],
             [decision.max_length for _, decision, _, _ in text_pending],
             temperature=0 if mode == "argmax" else temperature,
             seed=rng.randrange(2**31),
-            open_quote=all(decision.answer_prefill for _, decision, _, _ in text_pending),
+            after_key=all(decision.answer_prefill for _, decision, _, _ in text_pending),
         )
         for (index, decision, messages, prompt), value in zip(text_pending, values):
             completed = complete(prompt, messages, _closed_answer(decision, json.dumps(value, ensure_ascii=False)))

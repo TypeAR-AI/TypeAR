@@ -1,4 +1,4 @@
-"""Model-specific numeric token discovery and persistent caching."""
+"""Model-specific numeric and string-start token discovery, with persistent caching."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import Any, Iterable
 
 
 NUMERIC_CHARACTERS = frozenset("0123456789-.\"")
+HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 
 
 class NumericTokenizerError(RuntimeError):
@@ -39,6 +40,39 @@ def _could_participate_in_number(text: str) -> bool:
     if text.endswith('"') and (not fraction if separator else not integer):
         return False
     return True
+
+
+def _continues_json_string(body: str) -> bool:
+    """Whether body, written after an opening quote, can still end as '..."}'."""
+    i = 0
+    while i < len(body):
+        char = body[i]
+        if char == '"':
+            return body[i + 1:] in ("", "}")
+        if char == "\\":
+            escape = body[i + 1:i + 2]
+            if escape == "u":
+                digits = body[i + 2:i + 6]
+                if any(digit not in HEX_DIGITS for digit in digits):
+                    return False
+                i += 6
+                continue
+            if escape and escape not in '"\\/bfnrt':
+                return False
+            i += 2
+            continue
+        if ord(char) < 0x20:
+            return False
+        i += 1
+    return True
+
+
+def opens_json_string(text: str) -> bool:
+    """Whether a token can start the string value right after '{"k":'."""
+    for lead in (' "', '"'):
+        if text.startswith(lead):
+            return _continues_json_string(text[len(lead):])
+    return False
 
 
 def _default_cache_dir() -> Path:
@@ -78,8 +112,7 @@ def _load_tokenizer(source: str) -> Any:
         ) from exc
 
 
-def build_numeric_token_table(tokenizer: Any) -> list[tuple[int, str]]:
-    """Return every model token whose exact decoded text can occur in a number."""
+def _decoded_vocabulary(tokenizer: Any) -> list[tuple[int, str]]:
     try:
         token_ids: Iterable[int] = set(
             int(token_id)
@@ -87,25 +120,32 @@ def build_numeric_token_table(tokenizer: Any) -> list[tuple[int, str]]:
         )
     except Exception as exc:
         raise NumericTokenizerError("Tokenizer does not expose an enumerable vocabulary") from exc
-
-    table: list[tuple[int, str]] = []
+    pieces = []
     for token_id in sorted(token_ids):
         try:
-            text = tokenizer.decode([token_id], skip_special_tokens=False)
+            pieces.append((token_id, tokenizer.decode([token_id], skip_special_tokens=False)))
         except Exception:
             continue
-        if not _could_participate_in_number(text):
-            continue
-        table.append((token_id, text))
+    return pieces
+
+
+def build_numeric_token_table(tokenizer: Any) -> list[tuple[int, str]]:
+    """Return every model token whose exact decoded text can occur in a number."""
+    table = [(i, text) for i, text in _decoded_vocabulary(tokenizer) if _could_participate_in_number(text)]
     if not table:
         raise NumericTokenizerError("Tokenizer contains no usable numeric tokens")
     return table
 
 
-def load_numeric_token_table(
+def build_string_start_table(tokenizer: Any) -> list[tuple[int, str]]:
+    """Return every model token that can start a JSON string value after '{"k":'."""
+    return [(i, text) for i, text in _decoded_vocabulary(tokenizer) if opens_json_string(text)]
+
+
+def load_token_tables(
     source: str, cache_dir: str | os.PathLike[str] | None = None
-) -> list[tuple[int, str]]:
-    """Load a tokenizer-derived table, rebuilding it only when its hash changes."""
+) -> dict[str, list[tuple[int, str]]]:
+    """Load the numeric and string-start tables, rebuilding them only when the tokenizer changes."""
     tokenizer = _load_tokenizer(source)
     serialized = tokenizer.to_str()
     digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
@@ -115,25 +155,27 @@ def load_numeric_token_table(
     if cache_path.is_file():
         try:
             payload = json.loads(cache_path.read_text(encoding="utf-8"))
-            if payload.get("version") == 2 and payload.get("tokenizer_sha256") == digest:
-                return [
-                    (int(item[0]), str(item[1])) for item in payload["tokens"]
-                ]
+            if payload.get("version") == 3 and payload.get("tokenizer_sha256") == digest:
+                return {key: [(int(item[0]), str(item[1])) for item in payload[key]]
+                        for key in ("tokens", "string_starts")}
         except (OSError, ValueError, TypeError, KeyError):
             pass
 
-    table = build_numeric_token_table(tokenizer)
+    tables = {"tokens": build_numeric_token_table(tokenizer),
+              "string_starts": build_string_start_table(tokenizer)}
     directory.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "version": 2,
-        "source": source,
-        "tokenizer_sha256": digest,
-        "tokens": table,
-    }
+    payload = {"version": 3, "source": source, "tokenizer_sha256": digest, **tables}
     temporary = cache_path.with_suffix(f".{os.getpid()}.tmp")
     temporary.write_text(
         json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8",
     )
     os.replace(temporary, cache_path)
-    return table
+    return tables
+
+
+def load_numeric_token_table(
+    source: str, cache_dir: str | os.PathLike[str] | None = None
+) -> list[tuple[int, str]]:
+    """Load the tokenizer-derived numeric table."""
+    return load_token_tables(source, cache_dir)["tokens"]

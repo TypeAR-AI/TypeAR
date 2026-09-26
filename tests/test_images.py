@@ -13,6 +13,7 @@ except ImportError:
 
 from typellm import SGLangClient, SGLangError, TypeLLMClient
 from typellm.images import encode_image, encode_images
+from typellm.numeric import opens_json_string
 
 from tests.test_typellm import FakeSGLang
 
@@ -30,6 +31,12 @@ def fake_tokenize(text):
         ids.append(PIECES[piece] if piece else ord(text[i]))
         i += len(piece) if piece else 1
     return ids
+
+
+def fake_string_starts():
+    """The fake vocabulary's string-start tokens: PIECES plus every single character."""
+    pieces = {**{chr(i): i for i in range(32, 127)}, **PIECES}
+    return sorted((i, p) for p, i in pieces.items() if opens_json_string(p))
 
 
 def fake_detokenize(ids):
@@ -80,6 +87,7 @@ class FakeServerClient(SGLangClient):
     def __init__(self, tokenizer=None):
         super().__init__(model="fake-vl")
         self._chat_tokenizer = tokenizer or VisionTokenizer()
+        self._string_start_tokens = fake_string_starts()
         self.generate_payloads = []
 
     def _request(self, path, payload=None, *, allow_text=False):

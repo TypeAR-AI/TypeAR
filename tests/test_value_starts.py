@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from typellm import TypeLLMClient
+from typellm.numeric import build_string_start_table, opens_json_string
 
 import tests.test_images as fake_vocab
 from tests.test_batching import FakeServer
@@ -83,6 +84,7 @@ class KeyServer(FakeServer):
 
     def _request(self, path, payload=None, *, allow_text=False):
         if path == "/generate" and "token_ids_logprob" in payload and 819 in payload["token_ids_logprob"]:
+            self.payloads.append(payload)
             return {"meta_info": {"output_token_ids_logprobs": [
                 [[math.log(self.weights.get(t, 1e-9)), t, "?"] for t in payload["token_ids_logprob"]]]}}
         return super()._request(path, payload, allow_text=allow_text)
@@ -92,7 +94,7 @@ class ValueStartTests(unittest.TestCase):
     def test_starts_are_read_from_the_tokenizer(self):
         self.assertEqual(FakeServer().json_value_starts(), {
             "null": [(819, " null"), (2827, "null")], "positive": [(ord(" "), " ")],
-            "negative": [(900, " -")], "string": [(328, ' "'), (901, ' ""'), (ord('"'), '"')],
+            "negative": [(900, " -")], "string": [(ord('"'), '"'), (328, ' "'), (901, ' ""'), (951, '":')],
         })
 
     def test_a_tokenizer_without_an_empty_string_token_still_works(self):
@@ -100,7 +102,7 @@ class ValueStartTests(unittest.TestCase):
         try:
             client = TypeLLMClient(model="fake")
             client.sglang = FakeServer()
-            self.assertEqual(client.sglang.json_value_starts()["string"], [(328, ' "'), (ord('"'), '"')])
+            self.assertEqual(client.sglang.json_value_starts()["string"], [(ord('"'), '"'), (328, ' "'), (951, '":')])
             result = client.generate(context="Receipt", questions={"note": {"type": ["string", "null"]}})
             self.assertIn(result["note"], (None, "blue"))
         finally:
@@ -163,7 +165,7 @@ class ValueStartTests(unittest.TestCase):
         self.assertEqual(result, {"s": "blue"})
         [text] = [p for p in client.sglang.payloads
                   if not isinstance(p["sampling_params"], dict) and "regex" in p["sampling_params"][0]]
-        self.assertTrue(text["text"][0].endswith('{"s": "'))
+        self.assertTrue(text["text"][0].endswith('{"s":'))
 
     def test_a_spaceless_null_also_counts_for_strings(self):
         client = TypeLLMClient(model="fake")
@@ -179,6 +181,60 @@ class ValueStartTests(unittest.TestCase):
             self.assertEqual(client.sglang.json_value_starts()["null"], [(819, " null"), (2827, "null")])
             result = client.generate(context="Receipt", questions={"note": {"type": ["string", "null"]}})
         self.assertEqual(result, {"note": None})
+
+    def test_temperature_applies_to_null_after_the_value_starts_are_added_up(self):
+        # Per-start temperature would make null (0.40) win almost always at 0.01.
+        client = TypeLLMClient(model="fake")
+        client.sglang = SplitValueServer()
+        result = client.generate(context="Log", questions={"t": {"type": ["integer", "null"]}},
+                                 mode="sample", temperature=0.01)
+        self.assertEqual(result, {"t": 7})
+
+    def test_a_tokenizer_without_its_own_space_null_token_still_fails_loudly(self):
+        # {"k": null} starts with the lone space numbers share, so null cannot be told apart.
+        pieces = {piece: token for piece, token in fake_vocab.PIECES.items() if piece != " null"}
+        with patch.dict(fake_vocab.PIECES, {**pieces, "null": 2827}, clear=True):
+            for field in ({"type": ["string", "null"]}, {"type": ["number", "null"]}):
+                with self.subTest(field=field):
+                    client = TypeLLMClient(model="fake")
+                    client.sglang = FakeServer()
+                    self.assertEqual(client.sglang.json_value_starts()["null"], [])
+                    with self.assertRaisesRegex(ValueError, "a tokenizer that starts null"):
+                        client.generate(context="Receipt", questions={"x": field})
+
+
+class StringStartTests(unittest.TestCase):
+    def test_tokens_that_can_open_the_string_value(self):
+        for piece in [' "', '"', ' ""', '""', '"This', ' "@/', '"}', ' "\\', ' "\\u00', '"\\n', ' "a"}']:
+            with self.subTest(piece=piece):
+                self.assertTrue(opens_json_string(piece))
+
+    def test_tokens_that_cannot(self):
+        # Closing the string must leave only "}"; escapes must be JSON escapes.
+        for piece in [' "",', ' ".",', ' """', '"":', '":""', ' "\\(', ' "\\u00zz', '"\x01',
+                      "null", " null", "x", ' x"', ""]:
+            with self.subTest(piece=piece):
+                self.assertFalse(opens_json_string(piece))
+
+    def test_the_table_scans_the_whole_vocabulary(self):
+        class Tokenizer:
+            pieces = {1: '"', 2: ' "Hello', 3: ' "",', 4: "null", 5: '"}'}
+
+            def get_vocab(self, with_added_tokens=True):
+                return {text: i for i, text in self.pieces.items()}
+
+            def decode(self, ids, skip_special_tokens=False):
+                return self.pieces[ids[0]]
+
+        self.assertEqual(build_string_start_table(Tokenizer()), [(1, '"'), (2, ' "Hello'), (5, '"}')])
+
+    def test_null_competes_with_every_string_start(self):
+        client = TypeLLMClient(model="fake")
+        client.sglang = KeyServer({819: 0.30, 2827: 0.25})
+        client.generate(context="Receipt", questions={"note": {"type": ["string", "null"]}})
+        [decision] = [p for p in client.sglang.requests("score") if 819 in p["token_ids_logprob"]]
+        self.assertEqual(set(decision["token_ids_logprob"]),
+                         {819, 2827} | {i for i, _ in fake_vocab.fake_string_starts()})
 
 
 if __name__ == "__main__":
