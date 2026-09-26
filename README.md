@@ -331,25 +331,6 @@ When a field depends on multiple parents, TypeLLM reuses one parent prefix and
 includes all dependency results. SGLang manages the cache; KV tensors from
 different branches are not merged.
 
-### Batch performance
-
-A local run with Qwen3.8-27B NVFP4 on one NVIDIA RTX PRO 6000 Blackwell GPU used
-roughly 1,100 context tokens and 16 Boolean fields, with
-`--max-running-requests 16`.
-
-| Fields | End-to-end latency | Latency per decision | Relative throughput |
-|---|---:|---:|---:|
-| One at a time | 9.35 s | 0.584 s | 1.0x |
-| Together | 1.61 s | 0.101 s | 5.8x |
-
-"One at a time" was measured with the sequential mode of earlier versions; a
-chain of `depends_on` fields likewise runs one field per step.
-
-Each branch reused 1,088 cached tokens. Within a batch or a DAG layer, strings
-and choices are each generated in one batched request, numeric fields decode in
-lockstep with one batched request per digit, and thinking runs for every field
-in one batched request. Results depend on the model, workload,
-and server configuration.
 
 ## Probabilities and sampling
 
