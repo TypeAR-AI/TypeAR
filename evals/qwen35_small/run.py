@@ -85,7 +85,7 @@ def main():
             response = request(path, payload, **kwargs)
             params = payload.get('sampling_params', {}) if payload else {}
             # A batch of prompts has one sampling-params dict and one response each.
-            for item_params, item in zip(params, response) if isinstance(params, list) else [(params, response)]:
+            for item_params, item in zip(params, response) if isinstance(params, list) and isinstance(response, list) else [(params, response)]:
                 if isinstance(item_params, dict) and item_params.get('stop') == ['</think>']:
                     meta = item.get('meta_info', {})
                     reasoning.append({k: meta.get(k) for k in ('completion_tokens', 'finish_reason')})
