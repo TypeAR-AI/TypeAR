@@ -35,6 +35,14 @@ class UnifiedPromptTests(unittest.TestCase):
                     'Choices: {"A": "VISA", "B": null}\nAnswer as {"card": "<label>"}.',
         })
 
+    def test_bounds_are_written_without_exponent_notation(self):
+        got = prompts({
+            "rate": {"type": "number", "minimum": 0.00001, "maximum": 1e16, "instructions": "Rate."},
+            "share": {"type": "number", "minimum": 0.5, "maximum": 100, "instructions": "Share."},
+        })
+        self.assertIn("Type: number, minimum 0.00001, maximum 10000000000000000\n", got["rate"])
+        self.assertIn("Type: number, minimum 0.5, maximum 100\n", got["share"])
+
 
 if __name__ == "__main__":
     unittest.main()

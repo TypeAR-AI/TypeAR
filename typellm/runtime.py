@@ -9,6 +9,7 @@ import os
 import random
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
+from decimal import Decimal
 from itertools import permutations as all_permutations
 from string import ascii_uppercase, digits
 from typing import Any, Mapping, Sequence
@@ -154,7 +155,8 @@ class Choice:
         if self.text_type:
             kind = f"string{or_null}" + ("" if self.max_length is None else f", at most {self.max_length} characters")
         elif self.numeric_type is not None:
-            bounds = [f"{word} {json.dumps(value)}" for word, value in
+            # Plain decimals: json.dumps writes 1e-05, which the answer line forbids.
+            bounds = [f"{word} {Decimal(json.dumps(value)):f}" for word, value in
                       (("minimum", self.minimum), ("maximum", self.maximum)) if value is not None]
             kind = ", ".join([self.numeric_type + or_null, *bounds])
         else:
