@@ -2,24 +2,25 @@
 
 from __future__ import annotations
 
-import http.client
 import json
 import logging
 import os
 import threading
 import time
-import urllib.error
-import urllib.request
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any, Iterator, Mapping, Sequence
+
+import httpx
 
 from .numeric import load_token_tables
 from .protocol import detect_protocol
 
 
 class SGLangError(RuntimeError):
-    pass
+    def __init__(self, message: str = "", *, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status  # The HTTP status SGLang answered with, if any.
 
 
 # One character inside a JSON string: anything but a quote, backslash or control
@@ -96,6 +97,7 @@ class SGLangClient:
         self._end_of_message: tuple[int, str] | None = None
         # Serializes the expensive lazy loads when threads share one client.
         self._load_lock = threading.RLock()
+        self._http_client: httpx.Client | None = None
         # Per-thread/task, so concurrent generate() calls never share images.
         self._active_images: ContextVar[tuple[str, ...]] = ContextVar(
             f"typellm_images_{id(self)}", default=()
@@ -106,12 +108,26 @@ class SGLangClient:
         state = self.__dict__.copy()
         del state["_active_images"]
         del state["_load_lock"]
+        state["_http_client"] = None  # Each copy opens its own connections.
         return state
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__.update(state)
         self._active_images = ContextVar(f"typellm_images_{id(self)}", default=())
         self._load_lock = threading.RLock()
+
+    def close(self) -> None:
+        """Close the pooled connections to SGLang; a later request reopens them."""
+        with self._load_lock:
+            http_client, self._http_client = self._http_client, None
+        if http_client is not None:
+            http_client.close()
+
+    def __enter__(self) -> "SGLangClient":
+        return self
+
+    def __exit__(self, *exc_info: Any) -> None:
+        self.close()
 
     def warmup(self) -> None:
         """Load the model info, tokenizer and token tables before the first request."""
@@ -126,7 +142,7 @@ class SGLangClient:
         try:
             return self._request(f"/{name}")
         except SGLangError as exc:
-            if getattr(exc.__cause__, "code", None) != 404:
+            if exc.status != 404:
                 raise
             return self._request(f"/get_{name}")
 
@@ -139,6 +155,15 @@ class SGLangClient:
                 self._model_info_cache = response
             return self._model_info_cache
 
+    def _http(self) -> httpx.Client:
+        with self._load_lock:
+            if self._http_client is None:
+                # Keep-alive connections: numeric fields decode one request per token.
+                self._http_client = httpx.Client(limits=httpx.Limits(
+                    max_connections=None, max_keepalive_connections=64,
+                ))
+            return self._http_client
+
     def _request(
         self,
         path: str,
@@ -147,30 +172,29 @@ class SGLangClient:
         allow_text: bool = False,
     ) -> Any:
         body = None if payload is None else json.dumps(payload).encode("utf-8")
-        request = urllib.request.Request(
-            self.base_url + path,
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="GET" if payload is None else "POST",
-        )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            # Streamed so a failed body read still reports the status it follows.
+            with self._http().stream(
+                "GET" if payload is None else "POST",
+                self.base_url + path,
+                content=body,
+                headers={"Content-Type": "application/json"},
+                timeout=self.timeout,
+            ) as response:
+                if response.status_code >= 400:
+                    try:
+                        detail = response.read().decode("utf-8", errors="replace")
+                    except httpx.HTTPError as read_error:
+                        detail = f"Could not read error response: {read_error}"
+                    raise SGLangError(
+                        f"SGLang {path} returned HTTP {response.status_code}: {detail}",
+                        status=response.status_code,
+                    )
                 raw = response.read().decode("utf-8")
-        except urllib.error.HTTPError as exc:
-            try:
-                with exc:
-                    detail = exc.read().decode("utf-8", errors="replace")
-            except (OSError, http.client.HTTPException) as read_error:
-                detail = f"Could not read error response: {read_error}"
+        except httpx.HTTPError as exc:
+            # Connection failures, timeouts, resets and truncated responses.
             raise SGLangError(
-                f"SGLang {path} returned HTTP {exc.code}: {detail}"
-            ) from exc
-        except (OSError, http.client.HTTPException) as exc:
-            # URLError covers connection failures; read timeouts and resets
-            # surface as bare OSError subclasses, and truncated responses as
-            # http.client.IncompleteRead.
-            raise SGLangError(
-                f"Could not reach SGLang at {self.base_url}: {exc}"
+                f"Could not reach SGLang at {self.base_url}: {exc!r}"
             ) from exc
         try:
             return json.loads(raw)

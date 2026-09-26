@@ -1,5 +1,7 @@
 import unittest
 
+import httpx
+
 from typellm import (
     SGLangClient,
     SGLangError,
@@ -8,6 +10,28 @@ from typellm import (
     compile_json_schema,
 )
 from typellm.numeric import build_numeric_token_table
+
+
+def mock_http(handler):
+    """A real SGLangClient whose connection pool answers through handler."""
+    client = SGLangClient()
+    client._http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    return client
+
+
+class BrokenStream(httpx.SyncByteStream):
+    """A response body that sends one chunk, then fails with error (if any)."""
+
+    def __init__(self, chunk, error):
+        self.chunk, self.error, self.closed = chunk, error, False
+
+    def __iter__(self):
+        yield self.chunk
+        if self.error is not None:
+            raise self.error
+
+    def close(self):
+        self.closed = True
 
 
 class FakeSGLang:
@@ -845,57 +869,53 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         self.assertIs(payload["add_special_tokens"], False)
 
     def test_read_timeout_is_reported_as_sglang_error(self):
-        from unittest.mock import patch
-        with patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
-            with self.assertRaisesRegex(SGLangError, "timed out"):
-                SGLangClient()._request("/generate", {"text": "x"})
+        def handler(request):
+            raise httpx.ReadTimeout("timed out", request=request)
+
+        with self.assertRaisesRegex(SGLangError, "timed out") as caught:
+            mock_http(handler)._request("/generate", {"text": "x"})
+        self.assertIsInstance(caught.exception.__cause__, httpx.ReadTimeout)
 
     def test_truncated_response_is_reported_as_sglang_error(self):
-        from http.client import IncompleteRead
-        from unittest.mock import MagicMock, patch
-
-        error = IncompleteRead(b'{"text":', 20)
-        response = MagicMock()
-        response.__enter__.return_value.read.side_effect = error
-        with patch("urllib.request.urlopen", return_value=response):
-            with self.assertRaisesRegex(SGLangError, "IncompleteRead") as caught:
-                SGLangClient()._request("/generate", {"text": "x"})
+        error = httpx.RemoteProtocolError("peer closed connection without sending complete message body")
+        stream = BrokenStream(b'{"text":', error)
+        client = mock_http(lambda request: httpx.Response(200, stream=stream))
+        with self.assertRaisesRegex(SGLangError, "complete message body") as caught:
+            client._request("/generate", {"text": "x"})
         self.assertIs(caught.exception.__cause__, error)
+        self.assertTrue(stream.closed)
 
     def test_http_error_preserves_status_when_error_body_read_fails(self):
-        from http.client import IncompleteRead
-        from urllib.error import HTTPError
-        from unittest.mock import Mock, patch
-
-        for read_error in (IncompleteRead(b"partial", 20), TimeoutError("timed out")):
+        for read_error in (httpx.RemoteProtocolError("incomplete body"), httpx.ReadTimeout("timed out")):
             with self.subTest(read_error=read_error):
-                body = Mock(closed=False, read=Mock(side_effect=read_error))
-                error = HTTPError(
-                    "http://localhost/generate", 503, "Unavailable", {}, body
-                )
-                with patch("urllib.request.urlopen", side_effect=error):
-                    with self.assertRaisesRegex(
-                        SGLangError, "HTTP 503.*Could not read error response"
-                    ) as caught:
-                        SGLangClient()._request("/generate", {"text": "x"})
-                self.assertIs(caught.exception.__cause__, error)
-                body.close.assert_called_once()
+                stream = BrokenStream(b"partial", read_error)
+                client = mock_http(lambda request: httpx.Response(503, stream=stream))
+                with self.assertRaisesRegex(
+                    SGLangError, "HTTP 503.*Could not read error response"
+                ) as caught:
+                    client._request("/generate", {"text": "x"})
+                self.assertEqual(caught.exception.status, 503)
+                self.assertTrue(stream.closed)
 
     def test_http_error_preserves_body_and_closes_response(self):
-        from io import BytesIO
-        from urllib.error import HTTPError
-        from unittest.mock import patch
+        stream = BrokenStream(b"server unavailable", None)
+        client = mock_http(lambda request: httpx.Response(503, stream=stream))
+        with self.assertRaisesRegex(
+            SGLangError, "HTTP 503: server unavailable"
+        ) as caught:
+            client._request("/generate", {"text": "x"})
+        self.assertEqual(caught.exception.status, 503)
+        self.assertTrue(stream.closed)
 
-        body = BytesIO(b"server unavailable")
-        error = HTTPError("http://localhost/generate", 503, "Unavailable", {}, body)
-        with patch("urllib.request.urlopen", side_effect=error):
-            with self.assertRaisesRegex(
-                SGLangError, "HTTP 503: server unavailable"
-            ) as caught:
-                SGLangClient()._request("/generate", {"text": "x"})
-        self.assertIs(caught.exception.__cause__, error)
-        self.assertTrue(body.closed)
-
+    def test_requests_reuse_one_connection_pool(self):
+        client = mock_http(lambda request: httpx.Response(200, json={"ok": True}))
+        pool = client._http()
+        for _ in range(3):
+            self.assertEqual(client._request("/generate", {"text": "x"}), {"ok": True})
+        self.assertIs(client._http(), pool)
+        client.close()
+        self.assertTrue(pool.is_closed)
+        self.assertIsNot(client._http(), pool)
     def test_info_endpoints_use_current_sglang_names(self):
         from unittest.mock import Mock
         client = SGLangClient()
@@ -908,29 +928,26 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         )
 
     def test_info_endpoints_fall_back_to_old_names_only_on_404(self):
-        from io import BytesIO
-        from unittest.mock import MagicMock, patch
-        from urllib.error import HTTPError
+        paths = []
 
-        def urlopen(request, timeout):
-            if "/get_" not in request.full_url:
-                raise HTTPError(request.full_url, 404, "Not Found", {}, BytesIO(b"Not Found"))
-            response = MagicMock()
-            response.__enter__.return_value.read.return_value = b'{"context_length": 4096}'
-            return response
+        def handler(request):
+            paths.append(request.url.path)
+            if "/get_" not in request.url.path:
+                return httpx.Response(404, text="Not Found")
+            return httpx.Response(200, json={"context_length": 4096})
 
-        with patch("urllib.request.urlopen", side_effect=urlopen) as opened:
-            self.assertEqual(SGLangClient()._context_length(), 4096)
-        self.assertEqual(
-            [call.args[0].full_url.rsplit("/", 1)[1] for call in opened.call_args_list],
-            ["server_info", "get_server_info"],
-        )
+        self.assertEqual(mock_http(handler)._context_length(), 4096)
+        self.assertEqual(paths, ["/server_info", "/get_server_info"])
 
-        error = HTTPError("http://localhost/server_info", 500, "Error", {}, BytesIO(b"boom"))
-        with patch("urllib.request.urlopen", side_effect=error) as opened:
-            with self.assertRaisesRegex(SGLangError, "HTTP 500"):
-                SGLangClient()._context_length()
-        self.assertEqual(opened.call_count, 1)
+        paths.clear()
+
+        def failing(request):
+            paths.append(request.url.path)
+            return httpx.Response(500, text="boom")
+
+        with self.assertRaisesRegex(SGLangError, "HTTP 500"):
+            mock_http(failing)._context_length()
+        self.assertEqual(paths, ["/server_info"])
 
     def test_open_numeric_batch_preserves_schema_order(self):
         schema = {
