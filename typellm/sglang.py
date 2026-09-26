@@ -9,6 +9,7 @@ import threading
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass, field
 from typing import Any, Iterator, Mapping, Sequence
 
 import httpx
@@ -21,6 +22,47 @@ class SGLangError(RuntimeError):
     def __init__(self, message: str = "", *, status: int | None = None) -> None:
         super().__init__(message)
         self.status = status  # The HTTP status SGLang answered with, if any.
+
+
+@dataclass
+class Usage:
+    """What SGLang reported for the /generate requests of one generate() call."""
+
+    requests: int = 0
+    prompt_tokens: int = 0
+    cached_tokens: int = 0
+    completion_tokens: int = 0
+
+    def _add(self, response: Any) -> None:
+        self.requests += 1
+        for item in response if isinstance(response, list) else [response]:
+            meta = item.get("meta_info") if isinstance(item, Mapping) else None
+            if not isinstance(meta, Mapping):
+                continue
+            for name in ("prompt_tokens", "cached_tokens", "completion_tokens"):
+                value = meta.get(name)
+                if type(value) is int:
+                    setattr(self, name, getattr(self, name) + value)
+
+
+@dataclass
+class _CallScope:
+    usage: Usage = field(default_factory=Usage)
+
+
+# Set for the duration of one generate() call, in its own thread or task.
+_call_scope: ContextVar[_CallScope | None] = ContextVar("typellm_call_scope", default=None)
+
+
+@contextmanager
+def call_scope() -> Iterator[_CallScope]:
+    """Track every /generate request made in this block, in this thread or task."""
+    scope = _CallScope()
+    token = _call_scope.set(scope)
+    try:
+        yield scope
+    finally:
+        _call_scope.reset(token)
 
 
 # One character inside a JSON string: anything but a quote, backslash or control
@@ -252,9 +294,16 @@ class SGLangClient:
 
     def _generate(self, payload: Mapping[str, Any]) -> Any:
         """POST /generate, adding the active images to each prompt."""
+        response = self._request("/generate", self._with_images(payload))
+        scope = _call_scope.get()
+        if scope is not None:
+            scope.usage._add(response)
+        return response
+
+    def _with_images(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
         images = self._active_images.get()
         if not images:
-            return self._request("/generate", payload)
+            return payload
         text = payload["text"]
         prompts = [text] if isinstance(text, str) else list(text)
         placeholder = self.image_placeholder()
@@ -274,7 +323,7 @@ class SGLangClient:
         else:
             # A list is read as one entry per prompt.
             image_data = [list(images) for _ in prompts]
-        return self._request("/generate", {**payload, "image_data": image_data})
+        return {**payload, "image_data": image_data}
 
     def _tokenizer_model(self) -> str:
         if self.model:

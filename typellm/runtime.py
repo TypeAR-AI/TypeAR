@@ -22,7 +22,7 @@ from .schema import (
     dependency_layers,
 )
 from .images import encode_images
-from .sglang import SGLangClient
+from .sglang import SGLangClient, Usage, call_scope
 
 
 LOG = logging.getLogger("typellm")
@@ -220,20 +220,33 @@ class TypeLLMClient:
         self._last_prompts: ContextVar[list[str]] = ContextVar(
             f"typellm_last_prompts_{id(self)}", default=[]
         )
+        self._last_usage: ContextVar[Usage | None] = ContextVar(
+            f"typellm_last_usage_{id(self)}", default=None
+        )
 
     def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
         del state["_last_prompts"]
+        del state["_last_usage"]
         return state
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__.update(state)
         self._last_prompts = ContextVar(f"typellm_last_prompts_{id(self)}", default=[])
+        self._last_usage = ContextVar(f"typellm_last_usage_{id(self)}", default=None)
 
     @property
     def last_prompts(self) -> list[str]:
         """Final prompts of the last generate() call made in this thread or task."""
         return self._last_prompts.get()
+
+    @property
+    def last_usage(self) -> Usage | None:
+        """Requests and tokens of the last generate() call made in this thread or task.
+
+        Set even when the call raised, so partial work is still counted.
+        """
+        return self._last_usage.get()
 
     def _control_labels(self, count: int) -> list[str]:
         labels: list[str] = []
@@ -381,6 +394,7 @@ class TypeLLMClient:
         A seed makes this call reproducible on its own; without one, calls share
         the client's random stream.
         """
+        self._last_usage.set(None)
         if (context is None) == (state is None):
             raise ValueError("provide exactly one of context or state")
         context = state if state is not None else context
@@ -403,12 +417,15 @@ class TypeLLMClient:
         run = (_execute_dependency_decisions if any(d.depends_on is not None for d in decisions)
                else _execute_batch_decisions)
         attach = self.sglang.images(encoded_images) if encoded_images else nullcontext()
-        with attach:
-            rows, prompts = run(
-                self.sglang, context, decisions, active_mode,
-                active_temperature, rng, self.numeric_max_digits,
-                image_count=len(encoded_images),
-            )
+        with call_scope() as scope, attach:
+            try:
+                rows, prompts = run(
+                    self.sglang, context, decisions, active_mode,
+                    active_temperature, rng, self.numeric_max_digits,
+                    image_count=len(encoded_images),
+                )
+            finally:
+                self._last_usage.set(scope.usage)
         self._last_prompts.set(prompts)
 
         output: dict[str, Any] = {}
