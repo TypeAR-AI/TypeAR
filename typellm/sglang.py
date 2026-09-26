@@ -6,6 +6,7 @@ import http.client
 import json
 import logging
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -92,6 +93,9 @@ class SGLangClient:
         self._string_start_tokens: list[tuple[int, str]] | None = None
         self._chat_tokenizer: Any | None = None
         self._image_placeholder_cache: str | None = None
+        self._end_of_message: tuple[int, str] | None = None
+        # Serializes the expensive lazy loads when threads share one client.
+        self._load_lock = threading.RLock()
         # Per-thread/task, so concurrent generate() calls never share images.
         self._active_images: ContextVar[tuple[str, ...]] = ContextVar(
             f"typellm_images_{id(self)}", default=()
@@ -101,11 +105,20 @@ class SGLangClient:
         # A ContextVar cannot be pickled; images belong to one call anyway.
         state = self.__dict__.copy()
         del state["_active_images"]
+        del state["_load_lock"]
         return state
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__.update(state)
         self._active_images = ContextVar(f"typellm_images_{id(self)}", default=())
+        self._load_lock = threading.RLock()
+
+    def warmup(self) -> None:
+        """Load the model info, tokenizer and token tables before the first request."""
+        self._tokenizer_model()
+        self.end_of_message_token()
+        self.json_value_starts()
+        self.numeric_token_pieces()
 
     def _info(self, name: str) -> Any:
         # SGLang 0.5.6 renamed /get_<name> to /<name>; older servers and
@@ -118,12 +131,13 @@ class SGLangClient:
             return self._request(f"/get_{name}")
 
     def _model_info(self) -> Mapping[str, Any]:
-        if self._model_info_cache is None:
-            response = self._info("model_info")
-            if not isinstance(response, Mapping):
-                raise SGLangError("/model_info returned a non-object response")
-            self._model_info_cache = response
-        return self._model_info_cache
+        with self._load_lock:
+            if self._model_info_cache is None:
+                response = self._info("model_info")
+                if not isinstance(response, Mapping):
+                    raise SGLangError("/model_info returned a non-object response")
+                self._model_info_cache = response
+            return self._model_info_cache
 
     def _request(
         self,
@@ -267,9 +281,14 @@ class SGLangClient:
         )
 
     def _load_token_tables(self) -> None:
-        tables = load_token_tables(self._tokenizer_source(), self.numeric_cache_dir)
-        self._numeric_tokens = tables["tokens"]
-        self._string_start_tokens = tables["string_starts"]
+        with self._load_lock:
+            if self._numeric_tokens is not None and self._string_start_tokens is not None:
+                return
+            tables = load_token_tables(self._tokenizer_source(), self.numeric_cache_dir)
+            if self._numeric_tokens is None:
+                self._numeric_tokens = tables["tokens"]
+            if self._string_start_tokens is None:
+                self._string_start_tokens = tables["string_starts"]
 
     def numeric_token_pieces(self) -> list[tuple[int, str]]:
         """Return the cached numeric-token table for the served model tokenizer."""
@@ -284,6 +303,10 @@ class SGLangClient:
         return self._string_start_tokens
 
     def _get_chat_tokenizer(self) -> Any:
+        with self._load_lock:
+            return self._load_chat_tokenizer()
+
+    def _load_chat_tokenizer(self) -> Any:
         if self._chat_tokenizer is None:
             try:
                 from transformers import AutoTokenizer
@@ -523,6 +546,11 @@ class SGLangClient:
 
     def end_of_message_token(self) -> tuple[int, str]:
         """Return the tokenizer's single native end-of-message token."""
+        if self._end_of_message is None:
+            self._end_of_message = self._find_end_of_message_token()
+        return self._end_of_message
+
+    def _find_end_of_message_token(self) -> tuple[int, str]:
         tokenizer = self._get_chat_tokenizer()
         turn_end = detect_protocol(tokenizer).turn_end
         if turn_end is not None:

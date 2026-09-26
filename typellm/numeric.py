@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -165,7 +166,8 @@ def load_token_tables(
               "string_starts": build_string_start_table(tokenizer)}
     directory.mkdir(parents=True, exist_ok=True)
     payload = {"version": 3, "source": source, "tokenizer_sha256": digest, **tables}
-    temporary = cache_path.with_suffix(f".{os.getpid()}.tmp")
+    # Unique per thread too: clients in one process may build the same table at once.
+    temporary = cache_path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
     temporary.write_text(
         json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8",
