@@ -1,7 +1,15 @@
 import base64
+import io
 import os
+import pickle
 import tempfile
 import unittest
+from copy import deepcopy
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
 from typellm import SGLangClient, SGLangError, TypeLLMClient
 from typellm.images import encode_image, encode_images
@@ -27,6 +35,12 @@ def fake_tokenize(text):
 def fake_detokenize(ids):
     names = {v: k for k, v in PIECES.items()}
     return "".join(names.get(i) or chr(i) for i in ids)
+
+
+def decoded(image):
+    return Image.open(io.BytesIO(base64.b64decode(encode_image(image).split(",", 1)[1])))
+
+
 VISION = "<|vision_start|><|image_pad|><|vision_end|>"
 
 
@@ -112,6 +126,46 @@ class ImageEncodingTests(unittest.TestCase):
             encode_images("receipt.png")
 
 
+    @unittest.skipIf(Image is None, "Pillow is not installed")
+    def test_pil_modes_png_cannot_store_fall_back_to_rgb(self):
+        for mode in ["CMYK", "YCbCr", "LAB", "HSV", "RGBX", "I;16L"]:
+            with self.subTest(mode=mode):
+                self.assertEqual(decoded(Image.new(mode, (2, 2))).mode, "RGB")
+        self.assertEqual(decoded(Image.new("PA", (2, 2))).mode, "RGBA")
+
+    @unittest.skipIf(Image is None, "Pillow is not installed")
+    def test_pil_modes_png_can_store_are_unchanged(self):
+        for mode in ["1", "L", "LA", "P", "RGB", "RGBA", "I;16"]:
+            with self.subTest(mode=mode):
+                image = Image.new(mode, (2, 2))
+                buffer = io.BytesIO()
+                image.save(buffer, format="PNG")
+                self.assertEqual(encode_image(image), encode_image(buffer.getvalue()))
+
+    @unittest.skipIf(Image is None, "Pillow is not installed")
+    def test_float_and_corrupt_pil_images_raise(self):
+        with self.assertRaisesRegex(ValueError, "mode F"):
+            encode_image(Image.new("F", (2, 2)))
+        buffer = io.BytesIO()
+        Image.effect_noise((64, 64), 64).convert("RGB").save(buffer, format="JPEG")
+        truncated = Image.open(io.BytesIO(buffer.getvalue()[: len(buffer.getvalue()) // 2]))
+        with self.assertRaises(OSError):
+            encode_image(truncated)
+
+
+class PicklingTests(unittest.TestCase):
+    def test_clients_pickle_and_copy_without_sharing_images(self):
+        client = TypeLLMClient(model="m")
+        for copy in (pickle.loads(pickle.dumps(client)), deepcopy(client)):
+            self.assertEqual(copy.sglang.model, "m")
+            token = client.sglang._active_images.set(("a",))
+            try:
+                self.assertEqual(copy.sglang._active_images.get(), ())
+            finally:
+                client.sglang._active_images.reset(token)
+            pickle.dumps(copy)
+
+
 class PlaceholderTests(unittest.TestCase):
     def test_placeholder_is_derived_from_the_template(self):
         self.assertEqual(FakeServerClient().image_placeholder(), VISION)
@@ -148,7 +202,12 @@ class ImageRequestTests(unittest.TestCase):
         self.assertTrue(payloads)
         for payload in payloads:
             texts = [payload["text"]] if isinstance(payload["text"], str) else payload["text"]
-            expected = list(images) if isinstance(payload["text"], str) else [list(images)] * len(texts)
+            if isinstance(payload["text"], str):
+                expected = list(images)
+            elif len(images) == 1:
+                expected = images[0]
+            else:
+                expected = [list(images)] * len(texts)
             self.assertEqual(payload["image_data"], expected)
             for text in texts:
                 self.assertEqual(text.count(VISION), len(images))
@@ -159,12 +218,18 @@ class ImageRequestTests(unittest.TestCase):
         images = [encode_image(PNG), "https://example.com/b.png"]
         self.assert_images_attached(self.run_generate(images, questions=self.QUESTIONS), images)
 
-    def test_sequential_and_dag_requests_carry_the_images(self):
+    def test_a_single_image_is_sent_once_per_batch(self):
+        image = encode_image(PNG)
+        questions = {"n": {"type": "integer", "enum": [1, 2, 3, 4], "permutations": "all"}}
+        payloads = self.run_generate([image], questions=questions)
+        self.assert_images_attached(payloads, [image])
+        [scored] = [p for p in payloads if not isinstance(p["text"], str) and len(p["text"]) == 24]
+        self.assertEqual(scored["image_data"], image)
+
+    def test_dependency_requests_carry_the_images(self):
         dag = {**self.QUESTIONS, "advice": {"type": "boolean", "instructions": "Refund?",
                                             "depends_on": ["paid", "category"]}}
         images = [encode_image(PNG)]
-        self.assert_images_attached(
-            self.run_generate(images, questions=self.QUESTIONS, execution="sequential"), images)
         self.assert_images_attached(self.run_generate(images, questions=dag), images)
 
     def test_numeric_decoding_carries_the_images(self):

@@ -31,38 +31,33 @@ class TextTests(unittest.TestCase):
         with patch.object(client,'_request',return_value=[{'text':'""','meta_info':{'finish_reason':{'type':'stop'}}}]):
             self.assertEqual(client.generate_texts(['p'],[0]),[''])
 
-    def test_mixed_execution_and_history(self):
-        for execution in ('sequential','batch'):
-            client=TypeLLMClient(execution=execution)
-            fake=FakeSGLang([ord('7'),3,ord('A')])
-            calls=[]
-            def generate(prefixes, limits, **kwargs):
-                calls.append(prefixes)
-                return ['alpha' if p.rfind('Field: "a"') > p.rfind('Field: "b"') else 'beta' for p in prefixes]
-            fake.generate_texts=generate
-            client.sglang=fake
-            result=client.generate(state='context',questions={
-                'a':{'type':'string'},'n':{'type':'integer'},
-                'b':{'type':'string','maxLength':10},'ok':{'type':'boolean','return_probabilities':True}})
-            self.assertEqual(list(result),['a','n','b','ok'])
-            self.assertEqual([result['a'],result['n'],result['b'],result['ok']['value']],['alpha',7,'beta',True])
-            self.assertIn(True,result['ok']['probabilities'])
-            if execution=='batch':
-                self.assertEqual(len(calls),1)
-                self.assertEqual(len(calls[0]),2)
-                self.assertNotIn('alpha',calls[0][1])
-                self.assertNotIn('alpha',fake.batch_prompts[0][0])
-            else:
-                self.assertIn('alpha',calls[1][0])
-                self.assertIn('alpha',fake.prompts[0])
+    def test_mixed_fields_run_together(self):
+        client=TypeLLMClient()
+        fake=FakeSGLang([ord('7'),3,ord('A')])
+        calls=[]
+        def generate(prefixes, limits, **kwargs):
+            calls.append(prefixes)
+            return ['alpha' if p.rfind('Field: "a"') > p.rfind('Field: "b"') else 'beta' for p in prefixes]
+        fake.generate_texts=generate
+        client.sglang=fake
+        result=client.generate(state='context',questions={
+            'a':{'type':'string'},'n':{'type':'integer'},
+            'b':{'type':'string','maxLength':10},'ok':{'type':'boolean','return_probabilities':True}})
+        self.assertEqual(list(result),['a','n','b','ok'])
+        self.assertEqual([result['a'],result['n'],result['b'],result['ok']['value']],['alpha',7,'beta',True])
+        self.assertIn(True,result['ok']['probabilities'])
+        # Both strings go out in one request, and no field sees another's answer.
+        self.assertEqual(len(calls),1)
+        self.assertEqual(len(calls[0]),2)
+        self.assertNotIn('alpha',calls[0][1])
+        self.assertNotIn('alpha',fake.batch_prompts[0][0])
 
     def test_text_only_and_wrapper_budget(self):
-        for execution in ('batch','sequential'):
-            fake=FakeSGLang()
-            fake.generate_texts=lambda prefixes,limits,**kwargs:['hello']*len(prefixes)
-            with patch('typellm.runtime.SGLangClient',return_value=fake) as constructor:
-                self.assertEqual(run_schema(state='x',questions={'t':{'type':'string'}},execution=execution,text_max_tokens=24),{'t':'hello'})
-                self.assertEqual(constructor.call_args.kwargs['text_max_tokens'],24)
+        fake=FakeSGLang()
+        fake.generate_texts=lambda prefixes,limits,**kwargs:['hello']*len(prefixes)
+        with patch('typellm.runtime.SGLangClient',return_value=fake) as constructor:
+            self.assertEqual(run_schema(state='x',questions={'t':{'type':'string'}},text_max_tokens=24),{'t':'hello'})
+            self.assertEqual(constructor.call_args.kwargs['text_max_tokens'],24)
         for budget in (0,-1,True):
             with self.assertRaises(ValueError):
                 TypeLLMClient(text_max_tokens=budget)

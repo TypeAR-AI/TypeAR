@@ -1,4 +1,4 @@
-"""Schema binding and sequential constrained decision execution."""
+"""Schema binding and constrained decision execution."""
 
 from __future__ import annotations
 
@@ -189,7 +189,6 @@ class TypeLLMClient:
         model: str | None = None,
         *,
         mode: str = "argmax",
-        execution: str = "auto",
         temperature: float = 1.0,
         seed: int | None = None,
         timeout: float = 120.0,
@@ -202,7 +201,6 @@ class TypeLLMClient:
         text_max_tokens: int = 512,
     ) -> None:
         _validate_decoding(mode, temperature)
-        _validate_execution(execution)
         if type(numeric_max_digits) is not int or numeric_max_digits <= 0:
             raise ValueError("numeric_max_digits must be a positive integer")
         self.sglang = SGLangClient(
@@ -217,13 +215,11 @@ class TypeLLMClient:
             answer_reserve_tokens=numeric_max_digits + 3,
         )
         self.mode = mode
-        self.execution = execution
         self.temperature = temperature
         self.rng = random.Random(seed)
         self.label_pool = tuple(label_pool or self.DEFAULT_LABEL_POOL)
         self.numeric_max_digits = numeric_max_digits
         self.label_token_map: dict[str, int] = {}
-        self.last_prompt: str | None = None
         self.last_prompts: list[str] = []
 
     def _control_labels(self, count: int) -> list[str]:
@@ -363,10 +359,10 @@ class TypeLLMClient:
         questions: Mapping[str, Any] | None = None,
         images: Sequence[Any] | None = None,
         mode: str | None = None,
-        execution: str | None = None,
         temperature: float | None = None,
         print_final_prompt: bool = False,
     ) -> dict[str, Any]:
+        """Answer every field; fields run in parallel unless they declare depends_on."""
         if (context is None) == (state is None):
             raise ValueError("provide exactly one of context or state")
         context = state if state is not None else context
@@ -380,49 +376,20 @@ class TypeLLMClient:
                 raise SchemaError("questions must be a mapping of field names to definitions")
             schema = {"type": "object", "properties": questions}
         active_mode = self.mode if mode is None else mode
-        active_execution = self.execution if execution is None else execution
         active_temperature = self.temperature if temperature is None else temperature
         _validate_decoding(active_mode, active_temperature)
-        _validate_execution(active_execution)
         decisions = self.compile_schema(schema)
-        has_dependencies = any(d.depends_on is not None for d in decisions)
-        if active_execution == "auto":
-            active_execution = "dag" if has_dependencies else "batch"
-        if has_dependencies and active_execution != "dag":
-            raise SchemaError("depends_on requires execution='auto' or 'dag'")
+        # Independent fields run together; depends_on turns the fields into a
+        # graph whose layers run in order.
+        run = (_execute_dependency_decisions if any(d.depends_on is not None for d in decisions)
+               else _execute_batch_decisions)
         attach = self.sglang.images(encoded_images) if encoded_images else nullcontext()
         with attach:
-            if active_execution == "dag":
-                rows, self.last_prompts = _execute_dependency_decisions(
-                    self.sglang, context, decisions, active_mode,
-                    active_temperature, self.rng, self.numeric_max_digits,
-                    image_count=len(encoded_images),
-                )
-                self.last_prompt = None
-            elif active_execution == "sequential":
-                rows, self.last_prompt = _execute_decisions(
-                    self.sglang,
-                    context,
-                    decisions,
-                    active_mode,
-                    active_temperature,
-                    self.rng,
-                    self.numeric_max_digits,
-                    image_count=len(encoded_images),
-                )
-                self.last_prompts = [self.last_prompt]
-            else:
-                rows, self.last_prompts = _execute_batch_decisions(
-                    self.sglang,
-                    context,
-                    decisions,
-                    active_mode,
-                    active_temperature,
-                    self.rng,
-                    self.numeric_max_digits,
-                    image_count=len(encoded_images),
-                )
-                self.last_prompt = None
+            rows, self.last_prompts = run(
+                self.sglang, context, decisions, active_mode,
+                active_temperature, self.rng, self.numeric_max_digits,
+                image_count=len(encoded_images),
+            )
 
         output: dict[str, Any] = {}
         for decision, row in zip(decisions, rows):
@@ -441,11 +408,7 @@ class TypeLLMClient:
                 output[decision.name] = value
 
         if print_final_prompt:
-            if active_execution == "sequential":
-                assert self.last_prompt is not None
-                _print_final_prompt(self.last_prompt)
-            else:
-                _print_final_prompts(self.last_prompts)
+            _print_final_prompts(self.last_prompts)
         return output
 
 
@@ -478,11 +441,6 @@ def _validate_decoding(mode: str, temperature: float) -> None:
         raise ValueError("mode must be 'argmax' or 'sample'")
     if mode == "sample" and (not math.isfinite(temperature) or temperature <= 0):
         raise ValueError("temperature must be finite and > 0 in sample mode")
-
-
-def _validate_execution(execution: str) -> None:
-    if execution not in {"auto", "sequential", "batch", "dag"}:
-        raise ValueError("execution must be 'auto', 'sequential', 'batch', or 'dag'")
 
 
 def _numeric_candidates(
@@ -604,18 +562,6 @@ def _parse_numeric_value(text: str, decision: Choice) -> int | float:
             f"for {decision.name!r}"
         )
     return value
-
-
-def _decode_numeric(
-    client: SGLangClient,
-    prefix: str,
-    decision: Choice,
-    mode: str,
-    temperature: float,
-    rng: random.Random,
-    max_digits: int,
-) -> tuple[int | float, str, str]:
-    return _decode_numeric_batch(client, [(prefix, decision)], mode, temperature, rng, max_digits)[0]
 
 
 def _decode_numeric_batch(
@@ -796,124 +742,6 @@ def _mean_order_probabilities(scored, orders, label_tokens, temperature):
         for position, original_index in enumerate(order):
             aligned[labels[original_index]].append(probs[labels[position]])
     return {label: math.fsum(values) / len(scored) for label, values in aligned.items()}
-
-
-def _execute_decisions(
-    client: SGLangClient,
-    context: str,
-    decisions: Sequence[Choice],
-    mode: str,
-    temperature: float,
-    rng: random.Random,
-    numeric_max_digits: int = 32,
-    image_count: int = 0,
-) -> tuple[list[dict], str]:
-    messages: list[dict[str, Any]] = []
-    prefix = ""
-    results: list[dict] = []
-
-    for index, decision in enumerate(decisions):
-        user_content = decision.opening_text()
-        if index == 0:
-            user_content = _user_content(context.rstrip() + "\n\n" + user_content, image_count)
-        messages.append({"role": "user", "content": user_content})
-        prefix = client.render_chat(messages, add_generation_prompt=True)
-        key_prompt = prefix + decision.answer_prefill
-        if decision.text_type and decision.nullable and _decide_nulls(
-                client, [(key_prompt, decision)], mode, temperature, rng)[0]:
-            messages.append({"role": "assistant", "content": _closed_answer(decision, "null")})
-            results.append({"name": decision.name, "question": decision.question,
-                            "label": None, "value": None, "probabilities": None})
-            continue
-        if decision.text_type:
-            value = client.generate_texts([_string_prompt(prefix, decision)], [decision.max_length],
-                temperature=0 if mode == "argmax" else temperature,
-                seed=rng.randrange(2**31), open_quote=bool(decision.answer_prefill))[0]
-            messages.append({"role": "assistant", "content": _closed_answer(decision, json.dumps(value, ensure_ascii=False))})
-            prefix = client.render_chat(messages, add_generation_prompt=False)
-            results.append({"name": decision.name, "question": decision.question,
-                            "label": None, "value": value, "probabilities": None})
-            continue
-        if decision.numeric_type is not None:
-            semantic_value, prefix, generated_text = _decode_numeric(
-                client,
-                key_prompt,
-                decision,
-                mode,
-                temperature,
-                rng,
-                numeric_max_digits,
-            )
-            messages.append({"role": "assistant", "content": _closed_answer(decision, generated_text)})
-            results.append(
-                {
-                    "name": decision.name,
-                    "question": decision.question,
-                    "label": None,
-                    "value": semantic_value,
-                    "probabilities": None,
-                }
-            )
-            continue
-        label_tokens = {label: client.single_token(label) for label in decision.choices}
-        ids = [token_id for token_id, _ in label_tokens.values()]
-        if len(set(ids)) != len(ids):
-            raise ValueError(f"Decision {index} has labels with duplicate token IDs: {ids}")
-        LOG.info(
-            "decision=%d name=%s candidate_token_ids=%s",
-            index,
-            decision.name,
-            {label: token_id for label, (token_id, _) in label_tokens.items()},
-        )
-
-        probability_temperature = temperature if mode == "sample" else 1.0
-        if decision.permutations != 1:
-            orders = _choice_orderings(decision, rng)
-            variant_prompts = []
-            for variant, _order in orders:
-                content = variant.opening_text()
-                if index == 0:
-                    content = context.rstrip() + "\n\n" + content
-                variant_prompts.append(client.render_chat(
-                    messages[:-1] + [{"role": "user", "content": content}],
-                    add_generation_prompt=True) + decision.label_prefill)
-            scored, elapsed = client.score_candidates_batch(variant_prompts, [ids] * len(orders))
-            probabilities = _mean_order_probabilities(scored, orders, label_tokens, probability_temperature)
-            raw, meta = None, {}
-        else:
-            by_id, meta, elapsed = client.score_candidates(prefix + decision.label_prefill, ids)
-            raw = {label: by_id[token_id] for label, (token_id, _) in label_tokens.items()}
-            probabilities = candidate_softmax(raw, probability_temperature)
-        selected = (max(probabilities, key=probabilities.__getitem__)
-                    if mode == "argmax" else _sample(probabilities, rng))
-        selected_text = label_tokens[selected][1]
-        semantic_value = decision.choices[selected]
-
-        LOG.info("decision=%d raw_candidate_logprobs=%s", index, raw)
-        LOG.info("decision=%d renormalized_probabilities=%s", index, probabilities)
-        LOG.info(
-            "decision=%d selected=%s value=%s elapsed=%.4fs cached_tokens=%s",
-            index,
-            selected,
-            semantic_value,
-            elapsed,
-            meta.get("cached_tokens"),
-        )
-
-        # Send the growing full prefix again. SGLang—not this client—owns and
-        # recovers all KV tensors through its RadixAttention prefix cache.
-        messages.append({"role": "assistant", "content": _closed_label(decision, selected_text)})
-        prefix = client.render_chat(messages, add_generation_prompt=False)
-        results.append(
-            {
-                "name": decision.name,
-                "question": decision.question,
-                "label": selected,
-                "value": semantic_value,
-                "probabilities": probabilities,
-            }
-        )
-    return results, prefix
 
 
 def _execute_dependency_decisions(
@@ -1191,59 +1019,11 @@ def _execute_batch_decisions(
     return results, completed_prompts
 
 
-def _print_final_prompt(prefix: str) -> None:
-    print("\n===== FINAL ACCUMULATED PROMPT =====")
-    print(prefix)
-    print("===== END FINAL PROMPT =====")
-
-
 def _print_final_prompts(prefixes: Sequence[str]) -> None:
     for index, prefix in enumerate(prefixes):
         print(f"\n===== FINAL BATCH PROMPT {index} =====")
         print(prefix)
         print(f"===== END BATCH PROMPT {index} =====")
-
-
-def run_sequential_decisions(
-    context: str,
-    decisions: list[Choice],
-    mode: str = "argmax",
-    temperature: float = 1.0,
-    *,
-    base_url: str | None = None,
-    model: str | None = None,
-    seed: int | None = None,
-    numeric_max_digits: int = 32,
-    tokenizer: str | None = None,
-    numeric_cache_dir: str | os.PathLike[str] | None = None,
-    thinking: bool = False,
-    thinking_budget: int | None = None,
-    print_final_prompt: bool = True,
-) -> list[dict]:
-    _validate_decoding(mode, temperature)
-    if type(numeric_max_digits) is not int or numeric_max_digits <= 0:
-        raise ValueError("numeric_max_digits must be a positive integer")
-    client = SGLangClient(
-        base_url or os.environ.get("SGLANG_URL", "http://127.0.0.1:30000"),
-        model or os.environ.get("SGLANG_MODEL"),
-        tokenizer=tokenizer,
-        numeric_cache_dir=numeric_cache_dir,
-        thinking=thinking,
-        thinking_budget=thinking_budget,
-        answer_reserve_tokens=numeric_max_digits + 3,
-    )
-    results, prefix = _execute_decisions(
-        client,
-        context,
-        decisions,
-        mode,
-        temperature,
-        random.Random(seed),
-        numeric_max_digits,
-    )
-    if print_final_prompt:
-        _print_final_prompt(prefix)
-    return results
 
 
 def run_schema(
@@ -1255,7 +1035,6 @@ def run_schema(
     state: str | None = None,
     questions: Mapping[str, Any] | None = None,
     images: Sequence[Any] | None = None,
-    execution: str = "auto",
     base_url: str | None = None,
     model: str | None = None,
     seed: int | None = None,
@@ -1271,7 +1050,6 @@ def run_schema(
         base_url or os.environ.get("SGLANG_URL", "http://127.0.0.1:30000"),
         model or os.environ.get("SGLANG_MODEL"),
         mode=mode,
-        execution=execution,
         temperature=temperature,
         seed=seed,
         numeric_max_digits=numeric_max_digits,

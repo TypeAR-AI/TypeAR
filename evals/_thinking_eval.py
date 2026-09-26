@@ -101,7 +101,7 @@ def cases():
         'total': {'type': 'number', 'instructions': 'What is the invoice total?'},
     }, 'required': ['paid', 'currency', 'total']}
     output.append({'id': 'batch_mixed', 'context': 'Invoice: total GBP 24.5, paid in full.',
-                   'schema': independent, 'execution': 'batch',
+                   'schema': independent,
                    'expected': {'paid': True, 'currency': 'GBP', 'total': 24.5}})
     return output
 
@@ -152,12 +152,10 @@ def main():
                 result = None
                 error = None
                 try:
-                    result = c.generate(context=case['context'], schema=case['schema'],
-                                        execution=case.get('execution', 'sequential'))
+                    result = c.generate(context=case['context'], schema=case['schema'])
                 except Exception as exc:
                     error = f'{type(exc).__name__}: {exc}'
                 row = {'id': case['id'], 'thinking': mode,
-                       'execution': case.get('execution', 'sequential'),
                        'schema': case['schema'], 'result': result, 'error': error,
                        'type_safe': None if error else valid(result, case['schema']),
                        'correct': None if case['expected'] is None else (not error and result == case['expected']),

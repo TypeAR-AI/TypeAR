@@ -36,7 +36,7 @@ TypeLLM brings type-safe generation to existing autoregressive LLMs without chan
 1. **No out-of-schema hallucinations** — Choices stay within the allowed values.
 2. **Negligible output-token cost** — Single-token categorical selection and bounded numeric decoding; optional thinking adds tokens.
 3. **Shared-prefix reuse** — KV caching avoids reprocessing shared context.
-4. **Dependency-aware execution** — Run decisions sequentially, batch independent fields, or declare `depends_on` to form a dependency graph.
+4. **Dependency-aware execution** — Independent fields run together; declare `depends_on` to form a dependency graph.
 5. **Made for open autoregressive LLMs** — Use compatible models you already serve with SGLang.
 6. **Supports thinking mode** — Enable reasoning before the final constrained answer.
 7. **Image input** — Pass images to vision-language models alongside the text context. See [Image input](#image-input).
@@ -254,10 +254,12 @@ result = client.generate(
 ```
 
 Each image can be a local file path, an http(s) URL, a `data:` URI, raw bytes,
-or a PIL image. Local files are read by the client, so the SGLang server does
-not need access to your filesystem. Images come before the text in the first
-user turn, and every request in the call carries them, across batch,
-sequential and DAG execution, permutations and thinking.
+or a PIL image. PIL images are sent as PNG; modes PNG cannot store, such as
+CMYK, are converted to RGB, and float (`F`) images are rejected. Local files
+are read by the client, so the SGLang server does not need access to your
+filesystem. Images come before the text in the first
+user turn, and every request in the call carries them, for independent and
+dependent fields, permutations and thinking.
 
 TypeLLM reads the image placeholder from the model's chat template. If the
 template does not render image content, `generate()` raises an error before
@@ -265,26 +267,11 @@ sending any request.
 
 ## Dependency-aware execution
 
-The default `execution="auto"` selects batch execution unless a field declares
-`depends_on`.
+Fields without `depends_on` run together, and each sees only the original
+context. When a field needs earlier results, declare `depends_on`; TypeLLM then
+runs the fields as a dependency graph.
 
-| Mode | Field context | Execution order |
-| --- | --- | --- |
-| `batch` | Original context only | Independent fields run together |
-| `sequential` | Original context and all earlier answers | Field declaration order |
-| `dag` | Original context and dependency results | Dependency order |
-
-Set the mode per request or on the client:
-
-```python
-result = client.generate(
-    context=context,
-    questions=questions,
-    execution="sequential",  # Or "batch" for independent fields
-)
-```
-
-Batch execution shares the cached context across branches. Configure SGLang's
+Independent fields share the cached context across branches. Configure SGLang's
 `--max-running-requests` for the desired concurrency.
 
 ### Dependency execution (`depends_on`)
@@ -328,8 +315,6 @@ Each layer finishes before the next starts; unrelated branches remain separate.
 - Fields receive their direct and transitive dependency results. Probability-returning
   dependencies contribute only their selected value.
 - Unknown names, self-dependencies, duplicates, and cycles raise `SchemaError`.
-- Any `depends_on`, including `[]`, activates DAG execution in `auto` mode.
-  Combining it with explicit `batch` or `sequential` raises `SchemaError`.
 - Both `questions` and object-form `schema.properties` support dependencies.
   Returned keys follow field declaration order.
 
@@ -352,17 +337,19 @@ A local run with Qwen3.8-27B NVFP4 on one NVIDIA RTX PRO 6000 Blackwell GPU used
 roughly 1,100 context tokens and 16 Boolean fields, with
 `--max-running-requests 16`.
 
-| Execution | End-to-end latency | Latency per decision | Relative throughput |
+| Fields | End-to-end latency | Latency per decision | Relative throughput |
 |---|---:|---:|---:|
-| Sequential | 9.35 s | 0.584 s | 1.0x |
-| Batch | 1.61 s | 0.101 s | 5.8x |
+| One at a time | 9.35 s | 0.584 s | 1.0x |
+| Together | 1.61 s | 0.101 s | 5.8x |
+
+"One at a time" was measured with the sequential mode of earlier versions; a
+chain of `depends_on` fields likewise runs one field per step.
 
 Each branch reused 1,088 cached tokens. Within a batch or a DAG layer, strings
 and choices are each generated in one batched request, numeric fields decode in
 lockstep with one batched request per digit, and thinking runs for every field
 in one batched request. Results depend on the model, workload,
-and server configuration. Sequential fields see earlier answers; batch fields
-are independent, so the modes serve different workflows.
+and server configuration.
 
 ## Probabilities and sampling
 
@@ -450,15 +437,15 @@ Use `8` for eight distinct orderings or `"all"` for every ordering (up to 720). 
 Enum and boolean fields use one output token each. Numeric, text, and optional
 thinking outputs use multiple tokens.
 
-For a sequential workflow with `D` fields, `C` original context tokens, and
-roughly `S` new tokens per turn, input prefill counts are:
+For a chain of `D` dependent fields, `C` original context tokens, and
+roughly `S` new tokens per field, input prefill counts are:
 
 ```text
 without prefix reuse: O(D*C + D^2*S)
 with prefix reuse:    O(C + D*S)
 ```
 
-For independent batch fields, the shared context is prefilled once, followed by
+For independent fields, the shared context is prefilled once, followed by
 each field's question. These counts describe input token positions, not GPU
 compute or latency: new tokens still attend to the cached prefix, and reuse
 depends on cache availability. Hosted billing depends on the provider's
@@ -499,7 +486,7 @@ The tokenizer must load from standard artifacts without custom model code.
 | string type | ✓ | — | — | — | — |
 | Enable Thinking | ✓ | — | — | — | — |
 | Image input | ✓ | Not documented | — | Not documented | — |
-| Multi-field execution | Batch, sequential, DAG | Batch | Batch | Batch | Batch |
+| Multi-field execution | Batch, DAG | Batch | Batch | Batch | Batch |
 | Built-in field dependency graph | ✓ | — | — | — | — |
 | KV prefix reuse | Shared context + dependency paths | Not disclosed | Shared context | Not documented | Not applicable |
 

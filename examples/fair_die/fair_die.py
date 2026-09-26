@@ -19,7 +19,7 @@ def main():
     parser.add_argument('--output', type=Path, default=Path(__file__).with_name('result.json'))
     args = parser.parse_args()
     client = TypeLLMClient(args.url, model=args.model, tokenizer=args.tokenizer,
-                           seed=42, execution='batch', thinking=False, timeout=300)
+                           seed=42, thinking=False, timeout=300)
     runs = {}
     for budget in (1, 8, 'all'):
         start = time.monotonic()
@@ -41,7 +41,7 @@ def main():
         print(json.dumps({'permutations': budget, **runs[str(budget)]}), flush=True)
     record = {'question': QUESTION, 'context': 'A single roll of a fair die.',
               'model': args.model, 'tokenizer': args.tokenizer, 'seed': 42,
-              'thinking': False, 'execution': 'batch', 'mode': 'argmax',
+              'thinking': False, 'mode': 'argmax',
               'temperature': 1.0, 'ground_truth': dict.fromkeys(LABELS, 1/6),
               'runs': runs}
     args.output.write_text(json.dumps(record, indent=2) + '\n')

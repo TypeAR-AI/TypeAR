@@ -109,9 +109,9 @@ class ValueStartTests(unittest.TestCase):
     def test_negative_numbers_start_with_the_negative_token(self):
         client = TypeLLMClient(model="fake")
         client.sglang = SignServer(negative=True)
-        result = client.generate(context="Log", questions={"t": {"type": "number"}}, execution="sequential")
+        result = client.generate(context="Log", questions={"t": {"type": "number"}})
         self.assertEqual(result, {"t": -7})
-        self.assertIn('{"t": -7', client.last_prompt)
+        self.assertIn('{"t": -7}', client.last_prompts[0])
 
     def test_a_positive_sign_rules_out_a_later_minus(self):
         client = TypeLLMClient(model="fake")
@@ -124,11 +124,12 @@ class ValueStartTests(unittest.TestCase):
     def test_a_digit_right_after_the_colon_is_also_accepted(self):
         client = TypeLLMClient(model="fake")
         client.sglang = DirectDigitServer()
-        result = client.generate(context="Log", questions={"t": {"type": ["integer", "null"]}}, execution="sequential")
+        result = client.generate(context="Log", questions={"t": {"type": ["integer", "null"]}})
         self.assertEqual(result, {"t": 7})
-        [sign, *_] = client.sglang.requests("score")
+        [sign, *digits] = client.sglang.requests("score")
         self.assertTrue({ord(" "), 900, 819, ord("7"), ord("-")} <= set(sign["token_ids_logprob"]))
-        self.assertIn('{"t":7', client.last_prompt)
+        # Decoding continued from the spaceless digit.
+        self.assertTrue(digits[0]["text"].endswith('{"t":7'))
 
 
     def test_null_is_weighed_against_every_value_start_together(self):
@@ -141,10 +142,10 @@ class ValueStartTests(unittest.TestCase):
     def test_a_spaceless_null_counts_and_is_written_with_the_space(self):
         client = TypeLLMClient(model="fake")
         client.sglang = SpacelessNullServer()
-        result = client.generate(context="Log", questions={"t": {"type": ["number", "null"]}}, execution="sequential")
+        result = client.generate(context="Log", questions={"t": {"type": ["number", "null"]}})
         self.assertEqual(result, {"t": None})
-        self.assertIn('{"t": null}', client.last_prompt)
-        self.assertNotIn('{"t":null', client.last_prompt)
+        self.assertIn('{"t": null}', client.last_prompts[0])
+        self.assertNotIn('{"t":null', client.last_prompts[0])
 
     def test_a_spaceless_quote_counts_and_the_string_is_written_with_the_space(self):
         class SpacelessQuoteServer(SpacelessNullServer):

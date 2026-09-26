@@ -70,15 +70,15 @@ def main():
     tokenizer = warm.sglang._get_chat_tokenizer()
     numeric = warm.sglang.numeric_token_pieces()
 
-    def run_one(case, thinking, execution):
+    def run_one(case, thinking):
         name, context, questions, expected = case
         client = TypeLLMClient(args.url, model=args.model, tokenizer=args.model,
             thinking=thinking, thinking_budget=args.thinking_budget, text_max_tokens=128,
-            execution=execution, timeout=180, seed=42)
+            timeout=180, seed=42)
         client.sglang._chat_tokenizer = tokenizer
         client.sglang._numeric_tokens = numeric
         row = dict(model=args.model, thinking=thinking, thinking_budget=args.thinking_budget,
-                   execution=execution, case=name, workers=args.workers)
+                   case=name, workers=args.workers)
         reasoning = []
         request = client.sglang._request
         def record_request(path, payload=None, **kwargs):
@@ -104,14 +104,13 @@ def main():
 
     with path.open('w') as stream, ThreadPoolExecutor(max_workers=args.workers) as pool:
         for thinking in (False, True):
-            for execution in ('sequential', 'batch'):
-                futures = [pool.submit(run_one, case, thinking, execution) for case in cases()]
-                for future in futures:
-                    row = future.result()
-                    rows.append(row)
-                    stream.write(json.dumps(row, ensure_ascii=False) + '\n')
-                    stream.flush()
-                    print(json.dumps(row, ensure_ascii=False), flush=True)
+            futures = [pool.submit(run_one, case, thinking) for case in cases()]
+            for future in futures:
+                row = future.result()
+                rows.append(row)
+                stream.write(json.dumps(row, ensure_ascii=False) + '\n')
+                stream.flush()
+                print(json.dumps(row, ensure_ascii=False), flush=True)
     summary = {'model': args.model, 'requests': len(rows), 'completed': sum('error' not in r for r in rows),
                'type_valid': sum(r['type_valid'] for r in rows), 'correct': sum(r['correct'] for r in rows)}
     path.with_suffix('.summary.json').write_text(json.dumps(summary, indent=2) + '\n')

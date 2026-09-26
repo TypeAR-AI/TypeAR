@@ -10,7 +10,6 @@ from .runtime import (
     TypeLLMClient,
     candidate_softmax,
     run_schema,
-    run_sequential_decisions,
 )
 from .schema import (
     MAX_ENUM_CHOICES,
@@ -34,5 +33,4 @@ __all__ = [
     "compile_json_schema",
     "example_schema",
     "run_schema",
-    "run_sequential_decisions",
 ]

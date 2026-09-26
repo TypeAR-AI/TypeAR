@@ -51,7 +51,6 @@ class DependencyTests(unittest.TestCase):
         for name in ('root', 'left', 'right'):
             self.assertIn(f'"{name}": true', final)
         self.assertNotIn('unrelated', final)
-        self.assertIsNone(client.last_prompt)
         self.assertIn('Field: "final"', client.last_prompts[0])
         self.assertTrue(result['root']['value'])
 
@@ -120,13 +119,14 @@ class DependencyTests(unittest.TestCase):
             self.assertEqual(finish.call_count, 2)
             self.assertTrue(finish.call_args.args[0].startswith(parent))
 
-    def test_cli_defaults_to_auto_and_accepts_dag(self):
+    def test_cli_has_no_execution_mode(self):
         from typellm.cli import main
-        for args, mode in [(['typellm'], 'auto'), (['typellm', '--execution', 'dag'], 'dag')]:
-            with patch('sys.argv', args), patch('typellm.cli.TypeLLMClient') as factory, patch('builtins.print'), patch('typellm.cli.logging.basicConfig'):
-                factory.return_value.generate.return_value = {}
-                main()
-                self.assertEqual(factory.call_args.kwargs['execution'], mode)
+        with patch('sys.argv', ['typellm']), patch('typellm.cli.TypeLLMClient') as factory, patch('builtins.print'), patch('typellm.cli.logging.basicConfig'):
+            factory.return_value.generate.return_value = {}
+            main()
+            self.assertNotIn('execution', factory.call_args.kwargs)
+        with patch('sys.argv', ['typellm', '--execution', 'dag']), patch('sys.stderr'), self.assertRaises(SystemExit):
+            main()
 
     def test_invalid_graph_before_tokenizer_or_inference(self):
         cases = [
@@ -139,13 +139,7 @@ class DependencyTests(unittest.TestCase):
             with self.subTest(questions=questions), self.assertRaises(SchemaError):
                 compile_json_schema({'type': 'object', 'properties': questions})
 
-    def test_explicit_modes_and_empty_dependencies(self):
-        for mode in ('sequential', 'batch'):
-            client = self.client()
-            with self.assertRaises(SchemaError):
-                client.generate(context='', questions={'a': {'type': 'boolean', 'depends_on': []}}, execution=mode)
-            self.assertFalse(client.sglang.batch_prompts)
-            self.assertFalse(client.sglang.prompts)
+    def test_empty_dependencies(self):
         client = self.client()
         client.generate(context='', questions={'a': {'type': 'boolean', 'depends_on': []}, 'b': {'type': 'boolean'}})
         self.assertEqual(len(client.sglang.batch_prompts[0]), 2)
@@ -171,12 +165,17 @@ class DependencyTests(unittest.TestCase):
         self.assertTrue(client.last_prompts[1].startswith(client.last_prompts[0]))
         self.assertIn('"text": "hello \\"世界\\""', client.sglang.batch_prompts[0][0])
 
-    def test_auto_batches_roots_and_explicit_sequential_is_preserved(self):
-        for mode, batch in [(None, True), ('auto', True), ('dag', True), ('sequential', False)]:
-            client = self.client()
-            client.generate(context='', questions={'a': {'type': 'boolean'}, 'b': {'type': 'boolean'}}, execution=mode)
-            self.assertEqual(bool(client.sglang.batch_prompts), batch)
-            self.assertEqual(bool(client.sglang.prompts), not batch)
+    def test_fields_without_dependencies_run_together(self):
+        client = self.client()
+        client.generate(context='', questions={'a': {'type': 'boolean'}, 'b': {'type': 'boolean'}})
+        self.assertEqual([len(batch) for batch in client.sglang.batch_prompts], [2])
+        self.assertFalse(client.sglang.prompts)
+
+    def test_execution_is_no_longer_an_option(self):
+        with self.assertRaises(TypeError):
+            TypeLLMClient(execution='sequential')
+        with self.assertRaises(TypeError):
+            self.client().generate(context='', questions={'a': {'type': 'boolean'}}, execution='dag')
 
 
 if __name__ == '__main__':

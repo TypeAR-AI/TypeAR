@@ -9,35 +9,35 @@ from tests.test_dependencies import DependencyFake
 
 
 class PermutationTests(unittest.TestCase):
-    def run_case(self, execution, values, **options):
-        client = TypeLLMClient(seed=42, execution=execution, **options)
+    def run_case(self, dependent, values, **options):
+        client = TypeLLMClient(seed=42, **options)
         client.sglang = DependencyFake([65] * 100)
         fields = {
             'roll': {'type': 'string' if isinstance(values[0], str) else 'integer',
                      'enum': values, 'permutations': 'all', 'return_probabilities': True},
             'flag': {'type': 'boolean'},
         }
-        if execution == 'dag':
+        if dependent:
             fields['flag']['depends_on'] = ['roll']
         return client, client.generate(context='test', questions=fields)
 
     def test_position_bias_cancels_and_non_enum_runs_once(self):
-        for execution in ('batch', 'sequential', 'dag'):
+        for dependent in (False, True):
             for values in (['one', 'two', 'three'], [1, 2, 3]):
-                with self.subTest(execution=execution, values=values):
-                    client, result = self.run_case(execution, values)
+                with self.subTest(dependent=dependent, values=values):
+                    client, result = self.run_case(dependent, values)
                     for probability in result['roll']['probabilities'].values():
                         self.assertAlmostEqual(probability, 1 / 3)
                     self.assertTrue(result['flag'])
                     count = sum(map(len, client.sglang.batch_prompts)) + len(client.sglang.prompts)
                     self.assertEqual(count, 7)
-                    if execution == 'dag':
+                    if dependent:
                         self.assertIn('"roll":', client.sglang.batch_prompts[-1][0])
                         self.assertNotIn('probabilities', client.sglang.batch_prompts[-1][0])
 
     def test_sampling_uses_averaged_distribution(self):
         with patch('typellm.runtime._sample', return_value='B') as sample:
-            _client, result = self.run_case('batch', ['one', 'two', 'three'], mode='sample', temperature=.5)
+            _client, result = self.run_case(False, ['one', 'two', 'three'], mode='sample', temperature=.5)
         self.assertEqual(result['roll']['value'], 'two')
         self.assertEqual(sample.call_count, 2)  # one final choice plus the boolean
         for p in sample.call_args_list[0].args[0].values():

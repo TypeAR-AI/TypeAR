@@ -53,17 +53,20 @@ class PrefillTests(unittest.TestCase):
         self.assertEqual(len(labels), 1)
 
     def test_history_holds_the_closed_object(self):
-        client, _ = self.run_generate(self.QUESTIONS, execution="sequential")
-        self.assertIn('{"total": 7}', client.last_prompt)
-        self.assertIn('{"item": "blue"}', client.last_prompt)
+        client, _ = self.run_generate(self.QUESTIONS)
+        self.assertIn('{"total": 7}', client.last_prompts[0])
+        self.assertIn('{"item": "blue"}', client.last_prompts[1])
 
     def test_numbers_can_end_at_the_closing_brace(self):
         client = TypeLLMClient(model="fake")
         client.sglang = CloseBraceServer()
-        result = client.generate(context="Receipt", questions={"total": {"type": "integer"}}, execution="sequential")
+        result = client.generate(context="Receipt", questions={"total": {"type": "integer"}})
         self.assertEqual(result, {"total": 7})
-        # The decoded prompt ends with the brace the model chose, not the end-of-message token.
-        self.assertTrue(client.last_prompt.endswith('{"total": 7}'))
+        # Sign, "7", then "}" ends the number: the brace is offered and chosen.
+        steps = client.sglang.requests("score")
+        self.assertEqual(len(steps), 3)
+        self.assertIn(ord("}"), steps[-1]["token_ids_logprob"])
+        self.assertTrue(steps[-1]["text"].endswith('{"total": 7'))
 
     def test_dag_children_extend_the_closed_parent(self):
         client, _ = self.run_generate({

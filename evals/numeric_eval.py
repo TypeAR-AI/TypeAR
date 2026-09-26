@@ -138,6 +138,7 @@ def schema_for(case):
         properties["is_positive"] = {
             "type": "boolean",
             "instructions": case["followup"]["question"],
+            "depends_on": ["answer"],
         }
     return {
         "type": "object",
@@ -170,7 +171,7 @@ def main():
         error = None
         result = None
         try:
-            result = client.generate(context=case["context"], schema=schema_for(case), execution="sequential")
+            result = client.generate(context=case["context"], schema=schema_for(case))
             correct = matches(result["answer"], case["expected"])
             if "followup" in case:
                 correct = correct and result["is_positive"] == case["followup"]["expected"]

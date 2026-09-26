@@ -6,30 +6,26 @@ from tests.test_typellm import FakeSGLang
 
 
 class FieldProbabilityTests(unittest.TestCase):
-    def test_selected_fields_and_raw_history(self):
-        for execution in ('sequential', 'batch'):
-            for field_type, candidates in (
-                ('string', ['meal', 'travel']),
-                ('integer', [1, 2]),
-                ('number', [0.1, 0.5]),
-            ):
-                with self.subTest(execution=execution, field_type=field_type):
-                    fake = FakeSGLang([ord('B'), ord('A'), ord('B')])
-                    with patch('typellm.runtime.SGLangClient', return_value=fake):
-                        result = run_schema(context='receipt', execution=execution, questions={
-                            'choice': {'type': field_type, 'enum': candidates, 'return_probabilities': True},
-                            'flag': {'type': 'boolean', 'return_probabilities': True},
-                            'plain': {'type': 'boolean', 'return_probabilities': False},
-                        })
-                    self.assertEqual(result['choice']['value'], candidates[1])
-                    self.assertEqual(set(result['choice']['probabilities']), set(candidates))
-                    self.assertAlmostEqual(sum(result['choice']['probabilities'].values()), 1)
-                    self.assertIs(result['flag']['value'], True)
-                    self.assertEqual(set(result['flag']['probabilities']), {True, False})
-                    self.assertIs(result['plain'], False)
-                    if execution == 'sequential':
-                        self.assertIn('<assistant>{"choice": "B"}</assistant>', fake.prompts[1])
-                        self.assertNotIn('probabilities', fake.prompts[1])
+    def test_selected_fields(self):
+        for field_type, candidates in (
+            ('string', ['meal', 'travel']),
+            ('integer', [1, 2]),
+            ('number', [0.1, 0.5]),
+        ):
+            with self.subTest(field_type=field_type):
+                fake = FakeSGLang([ord('B'), ord('A'), ord('B')])
+                with patch('typellm.runtime.SGLangClient', return_value=fake):
+                    result = run_schema(context='receipt', questions={
+                        'choice': {'type': field_type, 'enum': candidates, 'return_probabilities': True},
+                        'flag': {'type': 'boolean', 'return_probabilities': True},
+                        'plain': {'type': 'boolean', 'return_probabilities': False},
+                    })
+                self.assertEqual(result['choice']['value'], candidates[1])
+                self.assertEqual(set(result['choice']['probabilities']), set(candidates))
+                self.assertAlmostEqual(sum(result['choice']['probabilities'].values()), 1)
+                self.assertIs(result['flag']['value'], True)
+                self.assertEqual(set(result['flag']['probabilities']), {True, False})
+                self.assertIs(result['plain'], False)
 
     def test_invalid_options_fail_before_inference(self):
         fields = [

@@ -14,7 +14,7 @@ from typellm import TypeLLMClient
 def cases():
     return [
         ('diamond', {
-            'final': {'type': 'integer', 'enum': list(range(24)), 'depends_on': ['left', 'right'], 'instructions': 'Add the values of left and right.'},
+            'final': {'type': 'integer', 'depends_on': ['left', 'right'], 'instructions': 'Add the values of left and right.'},
             'root': {'type': 'integer', 'enum': list(range(24)), 'instructions': 'Return 7.', 'return_probabilities': True},
             'left': {'type': 'integer', 'enum': list(range(24)), 'depends_on': ['root'], 'instructions': 'Return root plus 1.'},
             'noise': {'type': 'string', 'enum': ['ISOLATED_BRANCH_SENTINEL'], 'instructions': 'Select the only candidate.'},

@@ -378,15 +378,14 @@ class JsonSchemaCompilerTests(unittest.TestCase):
 class QuestionsInterfaceTests(unittest.TestCase):
     def test_state_and_context_produce_identical_prompts(self):
         questions = {"paid": {"type": "boolean", "instructions": "Is it paid?"}}
-        for execution in ["sequential", "batch"]:
-            for text in ["Receipt", ""]:
-                clients = [TypeLLMClient(execution=execution), TypeLLMClient(execution=execution)]
-                for client in clients:
-                    client.sglang = FakeSGLang([ord("A")])
-                a = clients[0].generate(state=text, questions=questions)
-                b = clients[1].generate(context=text, questions=questions)
-                self.assertEqual(a, b)
-                self.assertEqual(clients[0].last_prompts, clients[1].last_prompts)
+        for text in ["Receipt", ""]:
+            clients = [TypeLLMClient(), TypeLLMClient()]
+            for client in clients:
+                client.sglang = FakeSGLang([ord("A")])
+            a = clients[0].generate(state=text, questions=questions)
+            b = clients[1].generate(context=text, questions=questions)
+            self.assertEqual(a, b)
+            self.assertEqual(clients[0].last_prompts, clients[1].last_prompts)
 
     def test_state_rejects_conflicts_missing_and_invalid_types(self):
         from unittest.mock import Mock
@@ -409,20 +408,19 @@ class QuestionsInterfaceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             run_schema("Paid", state="Paid", questions=questions)
 
-    def test_questions_match_schema_in_both_modes(self):
+    def test_questions_match_schema(self):
         questions = {
             "expense": {"type": "string", "enum": ["meal", "travel"], "instructions": "Classify."},
             "paid": {"type": "boolean", "instructions": "Is it paid?"},
         }
-        for execution in ["sequential", "batch"]:
-            clients = [TypeLLMClient(execution=execution), TypeLLMClient(execution=execution)]
-            for client in clients:
-                client.sglang = FakeSGLang([ord("B"), ord("A")])
-            new = clients[0].generate(context="Receipt", questions=questions)
-            old = clients[1].generate(context="Receipt", schema={"type": "object", "properties": questions})
-            self.assertEqual(new, {"expense": "travel", "paid": True})
-            self.assertEqual(new, old)
-            self.assertEqual(clients[0].last_prompts, clients[1].last_prompts)
+        clients = [TypeLLMClient(), TypeLLMClient()]
+        for client in clients:
+            client.sglang = FakeSGLang([ord("B"), ord("A")])
+        new = clients[0].generate(context="Receipt", questions=questions)
+        old = clients[1].generate(context="Receipt", schema={"type": "object", "properties": questions})
+        self.assertEqual(new, {"expense": "travel", "paid": True})
+        self.assertEqual(new, old)
+        self.assertEqual(clients[0].last_prompts, clients[1].last_prompts)
 
     def test_questions_numeric_and_reserved_field_names(self):
         client = TypeLLMClient()
@@ -534,7 +532,7 @@ class ThinkingTests(unittest.TestCase):
 
     def test_forced_thinking_keeps_all_final_decoders(self):
         stops = [{"type": "length"}, {"type": "stop", "matched": "<|im_end|>"}]
-        for execution, finish in [(mode, stop) for mode in ("sequential", "batch") for stop in stops]:
+        for finish in stops:
             thinking = self.make_client({"text": "Partial", "meta_info": {"finish_reason": finish}})
             fake = FakeSGLang([ord("7"), 3, ord("A")])
             render = fake.render_chat
@@ -546,7 +544,7 @@ class ThinkingTests(unittest.TestCase):
                 self.assertTrue(all(p.endswith('</think>\n\n{"t": "') for p in prefixes))
                 return ["blue"] * len(prefixes)
             fake.generate_texts = generate_texts
-            client = TypeLLMClient(execution=execution)
+            client = TypeLLMClient()
             client.sglang = fake
             self.assertEqual(client.generate(context="test", questions={
                 "n": {"type": "integer"}, "b": {"type": "boolean"}, "t": {"type": "string"},
@@ -676,19 +674,21 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                     "enum": [0.1, 0.5, 1.0],
                     "instructions": "Choose a scale.",
                 },
-                "enabled": {"type": "boolean"},
+                "enabled": {"type": "boolean", "depends_on": ["scale"]},
             },
             "required": ["scale", "enabled"],
         }
-        client = TypeLLMClient(execution="sequential")
-        fake = FakeSGLang([ord("B"), ord("A")])
+        from tests.test_dependencies import DependencyFake
+        client = TypeLLMClient()
+        fake = DependencyFake([ord("B"), ord("A")])
         client.sglang = fake
 
         result = client.generate(context="context", schema=schema)
 
         self.assertEqual(result, {"scale": 0.5, "enabled": True})
         self.assertNotIn("A", result)
-        self.assertIn('<assistant>{"scale": "B"}</assistant>', fake.prompts[1])
+        # The dependent field continues from the parent's closed answer.
+        self.assertIn('<assistant>{"scale": "B"}</assistant>', fake.batch_prompts[1][0])
 
     def test_open_integer_is_constrained_per_character(self):
         schema = {
@@ -703,7 +703,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 "enabled": {"type": "boolean"},
             },
         }
-        client = TypeLLMClient(execution="sequential")
+        client = TypeLLMClient()
         fake = FakeSGLang([ord("4"), ord("2"), 3, ord("A")])
         client.sglang = fake
 
@@ -719,7 +719,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
             'Type: integer, minimum 0, maximum 100\nInstructions: How many items?\nAnswer as {"count": <integer>}.',
             fake.prompts[0],
         )
-        self.assertIn('<assistant>{"count": 42}</assistant>', fake.prompts[-1])
+        self.assertIn('<assistant>{"count": 42}</assistant>', client.last_prompts[0])
 
     def test_open_integer_can_finish_with_one_multi_character_model_token(self):
         schema = {
@@ -731,7 +731,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 }
             },
         }
-        client = TypeLLMClient(execution="sequential")
+        client = TypeLLMClient()
         fake = FakeSGLang(
             [9001, 3],
             numeric_pieces=[
@@ -746,14 +746,14 @@ class JsonSchemaExecutionTests(unittest.TestCase):
 
         self.assertEqual(result, {"answer": 5461})
         self.assertEqual(fake.candidate_sets, [[9001, 9002], [9001, 9002, 3, ord("}")]])
-        self.assertIn('<assistant>{"answer": 5461<eom>', client.last_prompt)
+        self.assertIn('<assistant>{"answer": 5461}</assistant>', client.last_prompts[0])
 
     def test_open_float_supports_sign_decimal_and_message_termination(self):
         schema = {
             "type": "object",
             "properties": {"temperature": {"type": "number"}},
         }
-        client = TypeLLMClient(execution="sequential")
+        client = TypeLLMClient()
         fake = FakeSGLang(
             [ord("-"), ord("0"), ord("."), ord("7"), ord("5"), 3]
         )
@@ -764,43 +764,41 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         self.assertEqual(result, {"temperature": -0.75})
         self.assertIn(
             'Answer as {"temperature": <number>}. Do not use exponent notation.',
-            client.last_prompt,
+            client.last_prompts[0],
         )
-        self.assertIn('<assistant>{"temperature": -0.75<eom>', client.last_prompt)
+        self.assertIn('<assistant>{"temperature": -0.75}</assistant>', client.last_prompts[0])
 
     def test_open_integer_beyond_float_range_preserves_value_and_bounds(self):
         big = 10**400
-        for execution in ("sequential", "batch"):
-            for value in (big, -big):
-                for bounds, error in (
-                    ({"minimum": value, "maximum": value}, None),
-                    ({"minimum": value + 1}, "below minimum"),
-                    ({"maximum": value - 1}, "above maximum"),
-                ):
-                    with self.subTest(execution=execution, value=value, bounds=bounds):
-                        client = TypeLLMClient(execution=execution, numeric_max_digits=401)
-                        client.sglang = FakeSGLang(
-                            [9001, 3], numeric_pieces=[(9001, str(value))]
-                        )
-                        questions = {"n": {"type": "integer", **bounds}}
-                        if error is not None:
-                            with self.assertRaisesRegex(ValueError, error):
-                                client.generate(context="context", questions=questions)
-                        else:
-                            result = client.generate(context="context", questions=questions)
-                            self.assertEqual(result, {"n": value})
-                            self.assertIs(type(result["n"]), int)
+        for value in (big, -big):
+            for bounds, error in (
+                ({"minimum": value, "maximum": value}, None),
+                ({"minimum": value + 1}, "below minimum"),
+                ({"maximum": value - 1}, "above maximum"),
+            ):
+                with self.subTest(value=value, bounds=bounds):
+                    client = TypeLLMClient(numeric_max_digits=401)
+                    client.sglang = FakeSGLang(
+                        [9001, 3], numeric_pieces=[(9001, str(value))]
+                    )
+                    questions = {"n": {"type": "integer", **bounds}}
+                    if error is not None:
+                        with self.assertRaisesRegex(ValueError, error):
+                            client.generate(context="context", questions=questions)
+                    else:
+                        result = client.generate(context="context", questions=questions)
+                        self.assertEqual(result, {"n": value})
+                        self.assertIs(type(result["n"]), int)
 
     def test_open_number_still_rejects_float_overflow(self):
-        for execution in ("sequential", "batch"):
-            for sign in ("", "-"):
-                with self.subTest(execution=execution, sign=sign):
-                    client = TypeLLMClient(execution=execution, numeric_max_digits=401)
-                    client.sglang = FakeSGLang(
-                        [9001, 3], numeric_pieces=[(9001, sign + str(10**400))]
-                    )
-                    with self.assertRaisesRegex(ValueError, "non-finite number"):
-                        client.generate(context="context", questions={"n": {"type": "number"}})
+        for sign in ("", "-"):
+            with self.subTest(sign=sign):
+                client = TypeLLMClient(numeric_max_digits=401)
+                client.sglang = FakeSGLang(
+                    [9001, 3], numeric_pieces=[(9001, sign + str(10**400))]
+                )
+                with self.assertRaisesRegex(ValueError, "non-finite number"):
+                    client.generate(context="context", questions={"n": {"type": "number"}})
 
     def test_open_number_never_enters_a_dead_end_at_the_digit_limit(self):
         client = TypeLLMClient(numeric_max_digits=2)
@@ -941,7 +939,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 "enabled": {"type": "boolean"},
             },
         }
-        client = TypeLLMClient(execution="batch")
+        client = TypeLLMClient()
         fake = FakeSGLang([ord("7"), 3, ord("A")])
         client.sglang = fake
 
@@ -966,7 +964,7 @@ class JsonSchemaExecutionTests(unittest.TestCase):
                 },
             },
         }
-        client = TypeLLMClient(execution="batch")
+        client = TypeLLMClient()
         fake = FakeSGLang([ord("B"), ord("A")])
         client.sglang = fake
 
@@ -979,7 +977,6 @@ class JsonSchemaExecutionTests(unittest.TestCase):
         self.assertIn("Choose a scale.", fake.batch_prompts[0][0])
         self.assertIn("Enable it?", fake.batch_prompts[0][1])
         self.assertNotIn("value=0.5", fake.batch_prompts[0][1])
-        self.assertIsNone(client.last_prompt)
         self.assertEqual(len(client.last_prompts), 2)
 
     def test_native_batch_request_uses_per_prompt_candidate_ids(self):

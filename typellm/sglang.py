@@ -87,6 +87,16 @@ class SGLangClient:
             f"typellm_images_{id(self)}", default=()
         )
 
+    def __getstate__(self) -> dict[str, Any]:
+        # A ContextVar cannot be pickled; images belong to one call anyway.
+        state = self.__dict__.copy()
+        del state["_active_images"]
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self._active_images = ContextVar(f"typellm_images_{id(self)}", default=())
+
     def _info(self, name: str) -> Any:
         # SGLang 0.5.6 renamed /get_<name> to /<name>; older servers and
         # sglang-router 0.3.2 only know the old name.
@@ -207,7 +217,15 @@ class SGLangClient:
                     f"Prompt contains {found} image placeholders for {len(images)} images; "
                     "the context text must not contain the model's image tokens"
                 )
-        image_data = list(images) if isinstance(text, str) else [list(images) for _ in prompts]
+        if isinstance(text, str):
+            image_data: Any = list(images)
+        elif len(images) == 1:
+            # SGLang gives a lone item to every prompt, so the image goes once
+            # rather than once per prompt (720 copies for a 6-value "all").
+            image_data = images[0]
+        else:
+            # A list is read as one entry per prompt.
+            image_data = [list(images) for _ in prompts]
         return self._request("/generate", {**payload, "image_data": image_data})
 
     def _tokenizer_model(self) -> str:

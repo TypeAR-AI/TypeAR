@@ -15,7 +15,7 @@ from .runtime import TypeLLMClient
 def example_schema() -> dict[str, Any]:
     return {
         "type": "object",
-        # Python/JSON object insertion order is the sequential decision order.
+        # Results come back in this order.
         "properties": {
             "expense_type": {
                 "type": "string",
@@ -52,9 +52,6 @@ def main() -> None:
         help="Tokenizer path or Hugging Face ID; normally discovered from SGLang",
     )
     parser.add_argument("--mode", choices=("argmax", "sample"), default="argmax")
-    parser.add_argument(
-        "--execution", choices=("auto", "sequential", "batch", "dag"), default="auto"
-    )
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--numeric-max-digits", type=int, default=32)
     parser.add_argument("--seed", type=int, default=0)
@@ -77,7 +74,6 @@ def main() -> None:
         args.server_url,
         args.model,
         mode=args.mode,
-        execution=args.execution,
         temperature=args.temperature,
         seed=args.seed,
         numeric_max_digits=args.numeric_max_digits,

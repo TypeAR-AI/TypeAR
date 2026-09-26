@@ -55,12 +55,10 @@ def main():
     rows = []
     with (args.output/'results.jsonl').open('w') as out:
         for thinking in ([False] if 'Ling-mini' in args.model else [False, True]):
-            matrix = [(execution, case) for execution in ('sequential', 'auto') for case in small.cases()]
-            matrix.extend(('auto', case) for case in dag_cases())
-            for execution, (name, context, questions, expected) in matrix:
+            for name, context, questions, expected in [*small.cases(), *dag_cases()]:
                 client = TypeLLMClient(args.url, model=args.model, tokenizer=args.model,
                     thinking=thinking, thinking_budget=args.thinking_budget, text_max_tokens=128,
-                    execution=execution, timeout=180, seed=42)
+                    timeout=180, seed=42)
                 client.sglang._chat_tokenizer = tokenizer
                 client.sglang._numeric_tokens = numeric
                 original = client.sglang._request
@@ -73,7 +71,7 @@ def main():
                                          'meta': [r.get('meta_info', {}) for r in rr]})
                     return response
                 client.sglang._request = record
-                row = {'model': args.model, 'case': name, 'thinking': thinking, 'execution': execution}
+                row = {'model': args.model, 'case': name, 'thinking': thinking}
                 start = time.monotonic()
                 try:
                     result = client.generate(context=context, questions=questions)

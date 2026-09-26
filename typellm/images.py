@@ -24,6 +24,22 @@ def _data_uri(data: bytes) -> str:
     return f"data:{mime or 'application/octet-stream'};base64,{base64.b64encode(data).decode('ascii')}"
 
 
+def _png_bytes(image: Any) -> bytes:
+    """Encode a PIL image as PNG, which keeps it lossless."""
+    if image.mode == "F":
+        # RGB would clip 0-1 float data to black.
+        raise ValueError("float (mode F) images are not supported; convert to 8-bit first")
+    image.load()  # A corrupt file raises here instead of sending what decoded.
+    buffer = io.BytesIO()
+    try:
+        image.save(buffer, format="PNG")
+    except OSError:
+        # PNG cannot store modes such as CMYK, YCbCr, LAB, HSV, RGBX, PA or I;16L.
+        buffer = io.BytesIO()
+        image.convert("RGBA" if image.mode == "PA" else "RGB").save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def encode_image(image: Any) -> str:
     """Return a URL or data URI that SGLang can load, whatever machine it runs on.
 
@@ -46,10 +62,7 @@ def encode_image(image: Any) -> str:
         with open(path, "rb") as handle:
             return encode_image(handle.read())
     if callable(getattr(image, "save", None)):
-        # A PIL image; PNG keeps it lossless.
-        buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
-        return _data_uri(buffer.getvalue())
+        return _data_uri(_png_bytes(image))
     raise ValueError(
         "each image must be a file path, http(s) URL, data: URI, bytes, or PIL image; "
         f"got {type(image).__name__}"

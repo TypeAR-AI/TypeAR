@@ -42,17 +42,15 @@ def main():
     args = parser.parse_args()
     image = receipt()
     rows, passed = [], True
-    for execution, questions in [
-        ('batch', {k: v for k, v in QUESTIONS.items() if k != 'check'}),
-        ('sequential', {k: v for k, v in QUESTIONS.items() if k != 'check'}),
-        ('dag', QUESTIONS),
+    for fields, questions in [
+        ('independent', {k: v for k, v in QUESTIONS.items() if k != 'check'}),
+        ('with depends_on', QUESTIONS),
     ]:
         client = TypeLLMClient(args.url, model=args.model, thinking=args.thinking)
-        values = client.generate(context='Read the attached receipt.', images=[image],
-                                 questions=questions, execution=execution)
+        values = client.generate(context='Read the attached receipt.', images=[image], questions=questions)
         ok = all(values[k] == EXPECTED[k] for k in values)
         passed &= ok
-        rows.append({'execution': execution, 'values': values, 'passed': ok})
+        rows.append({'fields': fields, 'values': values, 'passed': ok})
         print(json.dumps(rows[-1]), flush=True)
     print(json.dumps({'passed': passed}))
     sys.exit(0 if passed else 1)
