@@ -17,17 +17,27 @@ from .schema import (
     SchemaError,
     compile_json_schema,
 )
-from .sglang import SGLangClient, SGLangError, extract_candidate_logprobs
+from .sglang import (
+    GenerationCancelled,
+    GenerationTimeout,
+    SGLangClient,
+    SGLangError,
+    Usage,
+    extract_candidate_logprobs,
+)
 from .cli import example_schema, main
 
 __all__ = [
     "Choice",
     "Decision",
+    "GenerationCancelled",
+    "GenerationTimeout",
     "MAX_ENUM_CHOICES",
     "SGLangClient",
     "SGLangError",
     "SchemaError",
     "TypeLLMClient",
+    "Usage",
     "benchmark_prefix_cache",
     "candidate_softmax",
     "compile_json_schema",

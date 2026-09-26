@@ -7,7 +7,9 @@ import logging
 import math
 import os
 import random
+import threading
 from contextlib import nullcontext
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from itertools import permutations as all_permutations
@@ -21,7 +23,7 @@ from .schema import (
     dependency_layers,
 )
 from .images import encode_images
-from .sglang import SGLangClient
+from .sglang import SGLangClient, Usage, call_scope
 
 
 LOG = logging.getLogger("typellm")
@@ -215,7 +217,37 @@ class TypeLLMClient:
         self.label_pool = tuple(label_pool or self.DEFAULT_LABEL_POOL)
         self.numeric_max_digits = numeric_max_digits
         self.label_token_map: dict[str, int] = {}
-        self.last_prompts: list[str] = []
+        # Per-thread/task, so concurrent generate() calls never see each other's prompts.
+        self._last_prompts: ContextVar[list[str]] = ContextVar(
+            f"typellm_last_prompts_{id(self)}", default=[]
+        )
+        self._last_usage: ContextVar[Usage | None] = ContextVar(
+            f"typellm_last_usage_{id(self)}", default=None
+        )
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = self.__dict__.copy()
+        del state["_last_prompts"]
+        del state["_last_usage"]
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self._last_prompts = ContextVar(f"typellm_last_prompts_{id(self)}", default=[])
+        self._last_usage = ContextVar(f"typellm_last_usage_{id(self)}", default=None)
+
+    @property
+    def last_prompts(self) -> list[str]:
+        """Final prompts of the last generate() call made in this thread or task."""
+        return self._last_prompts.get()
+
+    @property
+    def last_usage(self) -> Usage | None:
+        """Requests and tokens of the last generate() call made in this thread or task.
+
+        Set even when the call raised, so partial work is still counted.
+        """
+        return self._last_usage.get()
 
     def _control_labels(self, count: int) -> list[str]:
         labels: list[str] = []
@@ -355,9 +387,19 @@ class TypeLLMClient:
         images: Sequence[Any] | None = None,
         mode: str | None = None,
         temperature: float | None = None,
+        seed: int | None = None,
+        timeout: float | None = None,
+        cancel: threading.Event | None = None,
         print_final_prompt: bool = False,
     ) -> dict[str, Any]:
-        """Answer every field; fields run in parallel unless they declare depends_on."""
+        """Answer every field; fields run in parallel unless they declare depends_on.
+
+        A seed makes this call reproducible on its own; without one, calls share
+        the client's random stream. timeout caps the whole call in seconds and
+        raises GenerationTimeout; setting cancel raises GenerationCancelled.
+        Both stop the call before its next request to SGLang.
+        """
+        self._last_usage.set(None)
         if (context is None) == (state is None):
             raise ValueError("provide exactly one of context or state")
         context = state if state is not None else context
@@ -373,18 +415,25 @@ class TypeLLMClient:
         active_mode = self.mode if mode is None else mode
         active_temperature = self.temperature if temperature is None else temperature
         _validate_decoding(active_mode, active_temperature)
-        decisions = self.compile_schema(schema)
-        # Independent fields run together; depends_on turns the fields into a
-        # graph whose layers run in order.
-        run = (_execute_dependency_decisions if any(d.depends_on is not None for d in decisions)
-               else _execute_batch_decisions)
-        attach = self.sglang.images(encoded_images) if encoded_images else nullcontext()
-        with attach:
-            rows, self.last_prompts = run(
-                self.sglang, context, decisions, active_mode,
-                active_temperature, self.rng, self.numeric_max_digits,
-                image_count=len(encoded_images),
-            )
+        rng = self.rng if seed is None else random.Random(seed)
+        # The time budget covers compiling too: labels are tokenized by SGLang.
+        with call_scope(timeout, cancel) as scope:
+            try:
+                decisions = self.compile_schema(schema)
+                # Independent fields run together; depends_on turns the fields into a
+                # graph whose layers run in order.
+                run = (_execute_dependency_decisions if any(d.depends_on is not None for d in decisions)
+                       else _execute_batch_decisions)
+                attach = self.sglang.images(encoded_images) if encoded_images else nullcontext()
+                with attach:
+                    rows, prompts = run(
+                        self.sglang, context, decisions, active_mode,
+                        active_temperature, rng, self.numeric_max_digits,
+                        image_count=len(encoded_images),
+                    )
+            finally:
+                self._last_usage.set(scope.usage)
+        self._last_prompts.set(prompts)
 
         output: dict[str, Any] = {}
         for decision, row in zip(decisions, rows):
@@ -403,7 +452,7 @@ class TypeLLMClient:
                 output[decision.name] = value
 
         if print_final_prompt:
-            _print_final_prompts(self.last_prompts)
+            _print_final_prompts(prompts)
         return output
 
 

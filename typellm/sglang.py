@@ -2,23 +2,104 @@
 
 from __future__ import annotations
 
-import http.client
 import json
 import logging
 import os
+import threading
 import time
-import urllib.error
-import urllib.request
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass, field
 from typing import Any, Iterator, Mapping, Sequence
+
+import httpx
 
 from .numeric import load_token_tables
 from .protocol import detect_protocol
 
 
 class SGLangError(RuntimeError):
-    pass
+    def __init__(self, message: str = "", *, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status  # The HTTP status SGLang answered with, if any.
+
+
+class GenerationTimeout(SGLangError):
+    """The generate() call ran out of its total time budget."""
+
+
+class GenerationCancelled(RuntimeError):
+    """The generate() call was cancelled through its cancel event."""
+
+
+@dataclass
+class Usage:
+    """What SGLang reported for the /generate requests of one generate() call."""
+
+    requests: int = 0
+    prompt_tokens: int = 0
+    cached_tokens: int = 0
+    completion_tokens: int = 0
+
+    def _add(self, response: Any) -> None:
+        self.requests += 1
+        for item in response if isinstance(response, list) else [response]:
+            meta = item.get("meta_info") if isinstance(item, Mapping) else None
+            if not isinstance(meta, Mapping):
+                continue
+            for name in ("prompt_tokens", "cached_tokens", "completion_tokens"):
+                value = meta.get(name)
+                if type(value) is int:
+                    setattr(self, name, getattr(self, name) + value)
+
+
+@dataclass
+class _CallScope:
+    usage: Usage = field(default_factory=Usage)
+    deadline: float | None = None  # time.monotonic() when the call runs out of time
+    cancel: threading.Event | None = None
+
+    def expired(self) -> bool:
+        return self.deadline is not None and time.monotonic() >= self.deadline
+
+    def check(self) -> None:
+        """Stop before the next request once the call is cancelled or out of time."""
+        if self.cancel is not None and self.cancel.is_set():
+            raise GenerationCancelled("generate() was cancelled")
+        if self.expired():
+            raise GenerationTimeout("generate() ran out of time")
+
+    def socket_timeout(self, timeout: float) -> float:
+        if self.deadline is None:
+            return timeout
+        return max(0.001, min(timeout, self.deadline - time.monotonic()))
+
+
+# Set for the duration of one generate() call, in its own thread or task.
+_call_scope: ContextVar[_CallScope | None] = ContextVar("typellm_call_scope", default=None)
+
+
+@contextmanager
+def call_scope(
+    timeout: float | None = None, cancel: threading.Event | None = None,
+) -> Iterator[_CallScope]:
+    """Track every /generate request made in this block, in this thread or task.
+
+    With a timeout (seconds, for the whole block) or a cancel event, the block
+    stops before its next request once either runs out; a request already
+    sent still finishes.
+    """
+    if timeout is not None and (type(timeout) not in (int, float) or not timeout > 0):
+        raise ValueError("timeout must be a positive number of seconds or None")
+    if cancel is not None and not callable(getattr(cancel, "is_set", None)):
+        raise ValueError("cancel must be a threading.Event or None")
+    deadline = None if timeout is None else time.monotonic() + timeout
+    scope = _CallScope(deadline=deadline, cancel=cancel)
+    token = _call_scope.set(scope)
+    try:
+        yield scope
+    finally:
+        _call_scope.reset(token)
 
 
 # One character inside a JSON string: anything but a quote, backslash or control
@@ -92,6 +173,10 @@ class SGLangClient:
         self._string_start_tokens: list[tuple[int, str]] | None = None
         self._chat_tokenizer: Any | None = None
         self._image_placeholder_cache: str | None = None
+        self._end_of_message: tuple[int, str] | None = None
+        # Serializes the expensive lazy loads when threads share one client.
+        self._load_lock = threading.RLock()
+        self._http_client: httpx.Client | None = None
         # Per-thread/task, so concurrent generate() calls never share images.
         self._active_images: ContextVar[tuple[str, ...]] = ContextVar(
             f"typellm_images_{id(self)}", default=()
@@ -101,11 +186,34 @@ class SGLangClient:
         # A ContextVar cannot be pickled; images belong to one call anyway.
         state = self.__dict__.copy()
         del state["_active_images"]
+        del state["_load_lock"]
+        state["_http_client"] = None  # Each copy opens its own connections.
         return state
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__.update(state)
         self._active_images = ContextVar(f"typellm_images_{id(self)}", default=())
+        self._load_lock = threading.RLock()
+
+    def close(self) -> None:
+        """Close the pooled connections to SGLang; a later request reopens them."""
+        with self._load_lock:
+            http_client, self._http_client = self._http_client, None
+        if http_client is not None:
+            http_client.close()
+
+    def __enter__(self) -> "SGLangClient":
+        return self
+
+    def __exit__(self, *exc_info: Any) -> None:
+        self.close()
+
+    def warmup(self) -> None:
+        """Load the model info, tokenizer and token tables before the first request."""
+        self._tokenizer_model()
+        self.end_of_message_token()
+        self.json_value_starts()
+        self.numeric_token_pieces()
 
     def _info(self, name: str) -> Any:
         # SGLang 0.5.6 renamed /get_<name> to /<name>; older servers and
@@ -113,17 +221,27 @@ class SGLangClient:
         try:
             return self._request(f"/{name}")
         except SGLangError as exc:
-            if getattr(exc.__cause__, "code", None) != 404:
+            if exc.status != 404:
                 raise
             return self._request(f"/get_{name}")
 
     def _model_info(self) -> Mapping[str, Any]:
-        if self._model_info_cache is None:
-            response = self._info("model_info")
-            if not isinstance(response, Mapping):
-                raise SGLangError("/model_info returned a non-object response")
-            self._model_info_cache = response
-        return self._model_info_cache
+        with self._load_lock:
+            if self._model_info_cache is None:
+                response = self._info("model_info")
+                if not isinstance(response, Mapping):
+                    raise SGLangError("/model_info returned a non-object response")
+                self._model_info_cache = response
+            return self._model_info_cache
+
+    def _http(self) -> httpx.Client:
+        with self._load_lock:
+            if self._http_client is None:
+                # Keep-alive connections: numeric fields decode one request per token.
+                self._http_client = httpx.Client(limits=httpx.Limits(
+                    max_connections=None, max_keepalive_connections=64,
+                ))
+            return self._http_client
 
     def _request(
         self,
@@ -133,30 +251,31 @@ class SGLangClient:
         allow_text: bool = False,
     ) -> Any:
         body = None if payload is None else json.dumps(payload).encode("utf-8")
-        request = urllib.request.Request(
-            self.base_url + path,
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="GET" if payload is None else "POST",
-        )
+        scope = _call_scope.get()
+        timeout = self.timeout if scope is None else scope.socket_timeout(self.timeout)
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            # Streamed so a failed body read still reports the status it follows.
+            with self._http().stream(
+                "GET" if payload is None else "POST",
+                self.base_url + path,
+                content=body,
+                headers={"Content-Type": "application/json"},
+                timeout=timeout,
+            ) as response:
+                if response.status_code >= 400:
+                    try:
+                        detail = response.read().decode("utf-8", errors="replace")
+                    except httpx.HTTPError as read_error:
+                        detail = f"Could not read error response: {read_error}"
+                    raise SGLangError(
+                        f"SGLang {path} returned HTTP {response.status_code}: {detail}",
+                        status=response.status_code,
+                    )
                 raw = response.read().decode("utf-8")
-        except urllib.error.HTTPError as exc:
-            try:
-                with exc:
-                    detail = exc.read().decode("utf-8", errors="replace")
-            except (OSError, http.client.HTTPException) as read_error:
-                detail = f"Could not read error response: {read_error}"
+        except httpx.HTTPError as exc:
+            # Connection failures, timeouts, resets and truncated responses.
             raise SGLangError(
-                f"SGLang {path} returned HTTP {exc.code}: {detail}"
-            ) from exc
-        except (OSError, http.client.HTTPException) as exc:
-            # URLError covers connection failures; read timeouts and resets
-            # surface as bare OSError subclasses, and truncated responses as
-            # http.client.IncompleteRead.
-            raise SGLangError(
-                f"Could not reach SGLang at {self.base_url}: {exc}"
+                f"Could not reach SGLang at {self.base_url}: {exc!r}"
             ) from exc
         try:
             return json.loads(raw)
@@ -214,9 +333,24 @@ class SGLangClient:
 
     def _generate(self, payload: Mapping[str, Any]) -> Any:
         """POST /generate, adding the active images to each prompt."""
+        payload = self._with_images(payload)
+        scope = _call_scope.get()
+        if scope is None:
+            return self._request("/generate", payload)
+        scope.check()
+        try:
+            response = self._request("/generate", payload)
+        except SGLangError as exc:
+            if scope.expired():
+                raise GenerationTimeout("generate() ran out of time") from exc
+            raise
+        scope.usage._add(response)
+        return response
+
+    def _with_images(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
         images = self._active_images.get()
         if not images:
-            return self._request("/generate", payload)
+            return payload
         text = payload["text"]
         prompts = [text] if isinstance(text, str) else list(text)
         placeholder = self.image_placeholder()
@@ -236,7 +370,7 @@ class SGLangClient:
         else:
             # A list is read as one entry per prompt.
             image_data = [list(images) for _ in prompts]
-        return self._request("/generate", {**payload, "image_data": image_data})
+        return {**payload, "image_data": image_data}
 
     def _tokenizer_model(self) -> str:
         if self.model:
@@ -267,9 +401,14 @@ class SGLangClient:
         )
 
     def _load_token_tables(self) -> None:
-        tables = load_token_tables(self._tokenizer_source(), self.numeric_cache_dir)
-        self._numeric_tokens = tables["tokens"]
-        self._string_start_tokens = tables["string_starts"]
+        with self._load_lock:
+            if self._numeric_tokens is not None and self._string_start_tokens is not None:
+                return
+            tables = load_token_tables(self._tokenizer_source(), self.numeric_cache_dir)
+            if self._numeric_tokens is None:
+                self._numeric_tokens = tables["tokens"]
+            if self._string_start_tokens is None:
+                self._string_start_tokens = tables["string_starts"]
 
     def numeric_token_pieces(self) -> list[tuple[int, str]]:
         """Return the cached numeric-token table for the served model tokenizer."""
@@ -284,6 +423,10 @@ class SGLangClient:
         return self._string_start_tokens
 
     def _get_chat_tokenizer(self) -> Any:
+        with self._load_lock:
+            return self._load_chat_tokenizer()
+
+    def _load_chat_tokenizer(self) -> Any:
         if self._chat_tokenizer is None:
             try:
                 from transformers import AutoTokenizer
@@ -523,6 +666,11 @@ class SGLangClient:
 
     def end_of_message_token(self) -> tuple[int, str]:
         """Return the tokenizer's single native end-of-message token."""
+        if self._end_of_message is None:
+            self._end_of_message = self._find_end_of_message_token()
+        return self._end_of_message
+
+    def _find_end_of_message_token(self) -> tuple[int, str]:
         tokenizer = self._get_chat_tokenizer()
         turn_end = detect_protocol(tokenizer).turn_end
         if turn_end is not None:
