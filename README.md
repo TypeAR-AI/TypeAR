@@ -210,9 +210,6 @@ result = client.generate(
 - `type` takes one type plus `"null"`. A nullable boolean adds `null` as a third
   choice. As in JSON Schema, a nullable enum returns `null` only if its `enum`
   lists `None`.
-- For numbers and strings, TypeLLM weighs the probability of `null` against
-  the probability of starting a value, then decodes the value. The tokens it
-  compares are read from the served model's tokenizer.
 - `return_probabilities` works for nullable booleans and enums, and its
   probabilities include `None`.
 
@@ -229,10 +226,9 @@ client = TypeLLMClient(
 result = client.generate(context=context, questions=questions)
 ```
 
-Set `thinking_budget=2048` to cap reasoning per field; no explicit budget is set
-by default. If reasoning reaches its limit or ends early at a recognized turn
-terminator, TypeLLM closes a nonempty thinking block and proceeds to the typed
-answer. Empty unfinished reasoning and unrecognized stops raise an error.
+Set `thinking_budget=2048` to cap reasoning per field; there is no budget by
+default. When reasoning reaches the budget, TypeLLM closes it and moves on to
+the typed answer.
 
 Models with always-on thinking still reason with `thinking=False`;
 `thinking_budget` applies to them too. See [Supported models](#supported-models).
@@ -254,30 +250,13 @@ result = client.generate(
 ```
 
 Each image can be a local file path, an http(s) URL, a `data:` URI, raw bytes,
-or a PIL image. PIL images are sent as PNG; modes PNG cannot store, such as
-CMYK, are converted to RGB, and float (`F`) images are rejected. Local files
-are read by the client, so the SGLang server does not need access to your
-filesystem. Images come before the text in the first
-user turn, and every request in the call carries them, for independent and
-dependent fields, permutations and thinking.
+or a PIL image. Local files are read by the client, so the SGLang server does
+not need access to your filesystem.
 
-TypeLLM reads the image placeholder from the model's chat template. If the
-template does not render image content, `generate()` raises an error before
-sending any request.
+## Dependency-aware generation
 
-## Dependency-aware execution
-
-Fields without `depends_on` run together, and each sees only the original
-context. When a field needs earlier results, declare `depends_on`; TypeLLM then
-runs the fields as a dependency graph.
-
-Independent fields share the cached context across branches. Configure SGLang's
-`--max-running-requests` for the desired concurrency.
-
-### Dependency execution (`depends_on`)
-
-Declare which earlier results a field needs. Forward references are allowed:
-fields do not need to be declared in execution order.
+Fields run together by default, and each sees only the original context.
+When a field needs earlier results, list them in `depends_on`:
 
 ```python
 result = client.generate(
@@ -309,28 +288,9 @@ result = client.generate(
 ```
 
 This runs `system`, then `severity` and `deployment_related`, then `rollback`.
-Each layer finishes before the next starts; unrelated branches remain separate.
-
-- `depends_on` lists unique field names. Missing or empty lists mark independent roots.
-- Fields receive their direct and transitive dependency results. Probability-returning
-  dependencies contribute only their selected value.
-- Unknown names, self-dependencies, duplicates, and cycles raise `SchemaError`.
-- Both `questions` and object-form `schema.properties` support dependencies.
-  Returned keys follow field declaration order.
-
-All fields execute. Dependencies do not change enums, substitute values into
-instructions, or conditionally skip fields. A failed layer stops subsequent layers.
-
-### Incremental prefix reuse along dependencies
-
-TypeLLM extends parent prompts along dependency paths, retaining previous answers
-and reasoning for KV cache reuse. In a chain `A → B → C`, each step builds on the
-previous prefix; independent branches share their common prefix.
-
-When a field depends on multiple parents, TypeLLM reuses one parent prefix and
-includes all dependency results. SGLang manages the cache; KV tensors from
-different branches are not merged.
-
+A field sees the results of its direct and transitive dependencies, and each
+step reuses its parent's cached prompt. Unknown names and cycles raise
+`SchemaError`.
 
 ## Probabilities and sampling
 
@@ -427,10 +387,7 @@ with prefix reuse:    O(C + D*S)
 ```
 
 For independent fields, the shared context is prefilled once, followed by
-each field's question. These counts describe input token positions, not GPU
-compute or latency: new tokens still attend to the cached prefix, and reuse
-depends on cache availability. Hosted billing depends on the provider's
-cached-input pricing.
+each field's question.
 
 ## Supported models
 
@@ -448,9 +405,6 @@ server.
 Other sizes in the Qwen3.5 and Qwen3.8 families are expected to be compatible.
 
 [Image input](#image-input) has been tested with `Qwen/Qwen3.8-27B`.
-
-The MiniCPM5, Ling and Ring runs used an RTX PRO 6000 Blackwell and
-SGLang 0.5.19 on 2026-09-22.
 
 Use the checkpoint ID as `model=`. If the server's tokenizer path is unavailable
 locally, set `tokenizer=` to its matching Hugging Face ID or local directory.
