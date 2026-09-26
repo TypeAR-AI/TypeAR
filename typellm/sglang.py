@@ -24,6 +24,14 @@ class SGLangError(RuntimeError):
         self.status = status  # The HTTP status SGLang answered with, if any.
 
 
+class GenerationTimeout(SGLangError):
+    """The generate() call ran out of its total time budget."""
+
+
+class GenerationCancelled(RuntimeError):
+    """The generate() call was cancelled through its cancel event."""
+
+
 @dataclass
 class Usage:
     """What SGLang reported for the /generate requests of one generate() call."""
@@ -48,6 +56,23 @@ class Usage:
 @dataclass
 class _CallScope:
     usage: Usage = field(default_factory=Usage)
+    deadline: float | None = None  # time.monotonic() when the call runs out of time
+    cancel: threading.Event | None = None
+
+    def expired(self) -> bool:
+        return self.deadline is not None and time.monotonic() >= self.deadline
+
+    def check(self) -> None:
+        """Stop before the next request once the call is cancelled or out of time."""
+        if self.cancel is not None and self.cancel.is_set():
+            raise GenerationCancelled("generate() was cancelled")
+        if self.expired():
+            raise GenerationTimeout("generate() ran out of time")
+
+    def socket_timeout(self, timeout: float) -> float:
+        if self.deadline is None:
+            return timeout
+        return max(0.001, min(timeout, self.deadline - time.monotonic()))
 
 
 # Set for the duration of one generate() call, in its own thread or task.
@@ -55,9 +80,21 @@ _call_scope: ContextVar[_CallScope | None] = ContextVar("typellm_call_scope", de
 
 
 @contextmanager
-def call_scope() -> Iterator[_CallScope]:
-    """Track every /generate request made in this block, in this thread or task."""
-    scope = _CallScope()
+def call_scope(
+    timeout: float | None = None, cancel: threading.Event | None = None,
+) -> Iterator[_CallScope]:
+    """Track every /generate request made in this block, in this thread or task.
+
+    With a timeout (seconds, for the whole block) or a cancel event, the block
+    stops before its next request once either runs out; a request already
+    sent still finishes.
+    """
+    if timeout is not None and (type(timeout) not in (int, float) or not timeout > 0):
+        raise ValueError("timeout must be a positive number of seconds or None")
+    if cancel is not None and not callable(getattr(cancel, "is_set", None)):
+        raise ValueError("cancel must be a threading.Event or None")
+    deadline = None if timeout is None else time.monotonic() + timeout
+    scope = _CallScope(deadline=deadline, cancel=cancel)
     token = _call_scope.set(scope)
     try:
         yield scope
@@ -214,6 +251,8 @@ class SGLangClient:
         allow_text: bool = False,
     ) -> Any:
         body = None if payload is None else json.dumps(payload).encode("utf-8")
+        scope = _call_scope.get()
+        timeout = self.timeout if scope is None else scope.socket_timeout(self.timeout)
         try:
             # Streamed so a failed body read still reports the status it follows.
             with self._http().stream(
@@ -221,7 +260,7 @@ class SGLangClient:
                 self.base_url + path,
                 content=body,
                 headers={"Content-Type": "application/json"},
-                timeout=self.timeout,
+                timeout=timeout,
             ) as response:
                 if response.status_code >= 400:
                     try:
@@ -294,10 +333,18 @@ class SGLangClient:
 
     def _generate(self, payload: Mapping[str, Any]) -> Any:
         """POST /generate, adding the active images to each prompt."""
-        response = self._request("/generate", self._with_images(payload))
+        payload = self._with_images(payload)
         scope = _call_scope.get()
-        if scope is not None:
-            scope.usage._add(response)
+        if scope is None:
+            return self._request("/generate", payload)
+        scope.check()
+        try:
+            response = self._request("/generate", payload)
+        except SGLangError as exc:
+            if scope.expired():
+                raise GenerationTimeout("generate() ran out of time") from exc
+            raise
+        scope.usage._add(response)
         return response
 
     def _with_images(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:

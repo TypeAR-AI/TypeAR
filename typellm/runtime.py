@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import random
+import threading
 from contextlib import nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
@@ -387,12 +388,16 @@ class TypeLLMClient:
         mode: str | None = None,
         temperature: float | None = None,
         seed: int | None = None,
+        timeout: float | None = None,
+        cancel: threading.Event | None = None,
         print_final_prompt: bool = False,
     ) -> dict[str, Any]:
         """Answer every field; fields run in parallel unless they declare depends_on.
 
         A seed makes this call reproducible on its own; without one, calls share
-        the client's random stream.
+        the client's random stream. timeout caps the whole call in seconds and
+        raises GenerationTimeout; setting cancel raises GenerationCancelled.
+        Both stop the call before its next request to SGLang.
         """
         self._last_usage.set(None)
         if (context is None) == (state is None):
@@ -411,19 +416,21 @@ class TypeLLMClient:
         active_temperature = self.temperature if temperature is None else temperature
         _validate_decoding(active_mode, active_temperature)
         rng = self.rng if seed is None else random.Random(seed)
-        decisions = self.compile_schema(schema)
-        # Independent fields run together; depends_on turns the fields into a
-        # graph whose layers run in order.
-        run = (_execute_dependency_decisions if any(d.depends_on is not None for d in decisions)
-               else _execute_batch_decisions)
-        attach = self.sglang.images(encoded_images) if encoded_images else nullcontext()
-        with call_scope() as scope, attach:
+        # The time budget covers compiling too: labels are tokenized by SGLang.
+        with call_scope(timeout, cancel) as scope:
             try:
-                rows, prompts = run(
-                    self.sglang, context, decisions, active_mode,
-                    active_temperature, rng, self.numeric_max_digits,
-                    image_count=len(encoded_images),
-                )
+                decisions = self.compile_schema(schema)
+                # Independent fields run together; depends_on turns the fields into a
+                # graph whose layers run in order.
+                run = (_execute_dependency_decisions if any(d.depends_on is not None for d in decisions)
+                       else _execute_batch_decisions)
+                attach = self.sglang.images(encoded_images) if encoded_images else nullcontext()
+                with attach:
+                    rows, prompts = run(
+                        self.sglang, context, decisions, active_mode,
+                        active_temperature, rng, self.numeric_max_digits,
+                        image_count=len(encoded_images),
+                    )
             finally:
                 self._last_usage.set(scope.usage)
         self._last_prompts.set(prompts)

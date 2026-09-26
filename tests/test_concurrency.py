@@ -7,7 +7,17 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
-from typellm import SGLangClient, SGLangError, TypeLLMClient, Usage
+import httpx
+
+from typellm import (
+    GenerationCancelled,
+    GenerationTimeout,
+    SGLangClient,
+    SGLangError,
+    TypeLLMClient,
+    Usage,
+)
+from typellm.sglang import call_scope
 
 from tests.test_batching import FakeServer
 
@@ -129,6 +139,88 @@ class UsageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             client.generate(questions=self.QUESTIONS)
         self.assertIsNone(client.last_usage)
+
+
+class DeadlineTests(unittest.TestCase):
+    QUESTIONS = UsageTests.QUESTIONS
+
+    def test_a_call_stops_once_its_time_runs_out(self):
+        class Slower(MeteredServer):
+            def _request(self, path, payload=None, *, allow_text=False):
+                if path == "/generate":
+                    time.sleep(0.03)
+                return super()._request(path, payload, allow_text=allow_text)
+
+        client = TypeLLMClient(model="fake")
+        client.sglang = Slower()
+        client.generate(context="Receipt", questions=self.QUESTIONS)
+        needed = len(client.sglang.payloads)
+        client.sglang.payloads.clear()
+        with self.assertRaises(GenerationTimeout):
+            client.generate(context="Receipt", questions=self.QUESTIONS, timeout=0.05)
+        self.assertLess(len(client.sglang.payloads), needed)
+        self.assertEqual(client.last_usage.requests, len(client.sglang.payloads))
+
+    def test_a_cancelled_call_sends_no_further_requests(self):
+        cancel = threading.Event()
+
+        class Cancelling(MeteredServer):
+            def _request(self, path, payload=None, *, allow_text=False):
+                response = super()._request(path, payload, allow_text=allow_text)
+                if path == "/generate" and len(self.payloads) == 2:
+                    cancel.set()
+                return response
+
+        client = TypeLLMClient(model="fake")
+        client.sglang = Cancelling()
+        with self.assertRaises(GenerationCancelled):
+            client.generate(context="Receipt", questions=self.QUESTIONS, cancel=cancel)
+        self.assertEqual(len(client.sglang.payloads), 2)
+
+    def test_socket_timeouts_never_outlast_the_call(self):
+        seen = []
+
+        def handler(request):
+            seen.append(request.extensions["timeout"]["read"])
+            return httpx.Response(200, json={"meta_info": {}})
+
+        client = SGLangClient(timeout=120)
+        client._http_client = httpx.Client(transport=httpx.MockTransport(handler))
+        client._request("/generate", {"text": "x"})
+        with call_scope(timeout=5):
+            client._generate({"text": "x"})
+        self.assertEqual(seen[0], 120)
+        self.assertLessEqual(seen[1], 5)
+
+    def test_a_request_cut_short_by_the_deadline_is_a_timeout(self):
+        def handler(request):
+            time.sleep(0.05)
+            raise httpx.ReadTimeout("timed out", request=request)
+
+        client = SGLangClient()
+        client._http_client = httpx.Client(transport=httpx.MockTransport(handler))
+        with self.assertRaises(GenerationTimeout) as caught, call_scope(timeout=0.02):
+            client._generate({"text": "x"})
+        self.assertIsInstance(caught.exception.__cause__, SGLangError)
+        # Without a deadline the same failure stays a plain SGLangError.
+        with self.assertRaises(SGLangError) as caught:
+            client._generate({"text": "x"})
+        self.assertNotIsInstance(caught.exception, GenerationTimeout)
+
+    def test_invalid_budgets_are_rejected(self):
+        class Recording(FakeServer):
+            def _request(self, path, payload=None, *, allow_text=False):
+                self.paths.append(path)
+                return super()._request(path, payload, allow_text=allow_text)
+
+        client = TypeLLMClient(model="fake")
+        client.sglang = Recording()
+        client.sglang.paths = []
+        for kwargs in ({"timeout": 0}, {"timeout": -1}, {"timeout": True}, {"timeout": "5"},
+                       {"cancel": True}):
+            with self.subTest(**kwargs), self.assertRaises(ValueError):
+                client.generate(context="Receipt", questions={"b": {"type": "boolean"}}, **kwargs)
+        self.assertEqual(client.sglang.paths, [])  # Rejected before even compiling.
 
 
 class LazyLoadTests(unittest.TestCase):
