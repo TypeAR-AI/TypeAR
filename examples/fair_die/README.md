@@ -2,7 +2,8 @@
 
 Ask Qwen the same fair-die question with the native per-field `permutations` API.
 The expected probability of each outcome is 1/6. The example compares one
-ordering, eight sampled distinct orderings, and all 720 orderings.
+ordering, the balanced set of six from `"auto"`, eight sampled distinct
+orderings, and all 720 orderings.
 
 ```python
 from typellm import TypeLLMClient
@@ -14,7 +15,7 @@ result = client.generate(
         "type": "string",
         "enum": ["one", "two", "three", "four", "five", "six"],
         "instructions": "what number will come up on a single roll of a fair six-sided die?",
-        "permutations": "all",
+        "permutations": "auto",
         "return_probabilities": True,
     }},
 )
@@ -24,7 +25,8 @@ print(result["roll"])
 Only explicit enum questions support `permutations`. The client handles
 reordering, batch scoring, probability alignment, and averaging; the return
 format remains `{value, probabilities}`. `1` preserves the original ordering,
-while `8` samples eight distinct permutations.
+`"auto"` evaluates six balanced orderings, `8` samples eight distinct
+permutations, and `"all"` evaluates all 720.
 
 ## Run
 
@@ -48,13 +50,16 @@ requests.
 
 ## Recorded GPU result
 
-Run on September 23, 2026, using the model and settings above.
+Run on September 26, 2026, using the model and settings above.
 
-| Permutations | one | two | three | four | five | six | KL(P ∥ Q) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 75.97% | 1.79% | 13.20% | 6.24% | 1.58% | 1.23% | 1.14973 |
-| 8 | 41.36% | 20.07% | 17.89% | 3.97% | 2.25% | 14.47% | 0.40247 |
-| 720 (all) | 27.08% | 13.83% | 14.76% | 13.83% | 13.24% | 17.27% | 0.03406 |
-| Ground truth | 16.67% | 16.67% | 16.67% | 16.67% | 16.67% | 16.67% | 0 |
+| Permutations | one | two | three | four | five | six | KL(P ∥ Q) | Time |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 66.19% | 0.94% | 13.03% | 14.77% | 1.76% | 3.30% | 0.95417 | 1.43 s |
+| auto (6) | 35.39% | 13.02% | 12.46% | 12.38% | 10.43% | 16.32% | 0.09534 | 0.13 s |
+| 8 | 40.28% | 15.19% | 22.71% | 6.31% | 5.23% | 10.27% | 0.25249 | 0.14 s |
+| 720 (all) | 33.43% | 11.96% | 14.97% | 13.35% | 11.49% | 14.81% | 0.07595 | 7.39 s |
+| Ground truth | 16.67% | 16.67% | 16.67% | 16.67% | 16.67% | 16.67% | 0 | |
 
-See [result.json](result.json) for full precision. This run uses a single field named `roll` for every ordering. Earlier experiments used separate `order_N` fields, so their prompts and numerical results differ. The 720-order mean is much closer to uniform, but still favors `one`.
+The first run's time includes loading the tokenizer.
+
+See [result.json](result.json) for full precision. This run uses a single field named `roll` for every ordering. Earlier experiments used separate `order_N` fields, so their prompts and numerical results differ. Six balanced orderings get close to the 720-order mean at a small fraction of the cost; both are much closer to uniform, but still favor `one`.

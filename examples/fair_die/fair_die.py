@@ -1,4 +1,4 @@
-"""Compare one ordering, eight sampled orderings, and all 720 using native API."""
+"""Compare one ordering, a balanced set of six, eight sampled orderings, and all 720."""
 import argparse
 import json
 import math
@@ -21,7 +21,7 @@ def main():
     client = TypeLLMClient(args.url, model=args.model, tokenizer=args.tokenizer,
                            seed=42, thinking=False, timeout=300)
     runs = {}
-    for budget in (1, 8, 'all'):
+    for budget in (1, 'auto', 8, 'all'):
         start = time.monotonic()
         answer = client.generate(
             context='A single roll of a fair die.',

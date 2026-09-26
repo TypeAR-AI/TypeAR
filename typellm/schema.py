@@ -112,9 +112,9 @@ def compile_json_schema(schema: Mapping[str, Any]) -> list[Decision]:
         if "permutations" in field:
             if enum is None:
                 raise SchemaError(f"permutations for {name!r} requires an explicit enum")
-            if not (permutations == "all" or type(permutations) is int and permutations > 0):
-                raise SchemaError(f"permutations for {name!r} must be a positive integer or 'all'")
-            if isinstance(enum, list):
+            if not (permutations in ("auto", "all") or type(permutations) is int and permutations > 0):
+                raise SchemaError(f"permutations for {name!r} must be 'auto', 'all' or a positive integer")
+            if isinstance(enum, list) and permutations != "auto":
                 count = math.factorial(len(enum))
                 budget = count if permutations == "all" else min(permutations, count)
                 if budget > MAX_PERMUTATIONS:

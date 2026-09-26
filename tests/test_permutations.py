@@ -4,7 +4,9 @@ import unittest
 from unittest.mock import patch
 
 from typellm import TypeLLMClient, SchemaError, compile_json_schema
-from typellm.runtime import Choice, _choice_orderings
+from collections import Counter
+
+from typellm.runtime import Choice, _balanced_orders, _choice_orderings
 from tests.test_dependencies import DependencyFake
 
 
@@ -57,7 +59,7 @@ class PermutationTests(unittest.TestCase):
             {'type': 'string', 'permutations': 2},
             {'type': 'number', 'permutations': 2},
         ] + [{'type': 'string', 'enum': ['a', 'b'], 'permutations': v}
-             for v in (0, -1, True, False, 2.0, None, '8', {}, [])]
+             for v in (0, -1, True, False, 2.0, None, '8', 'AUTO', {}, [])]
         invalid.append({'type': 'integer', 'enum': list(range(7)), 'permutations': 'all'})
         client = TypeLLMClient()
         with patch.object(client.sglang, 'single_token') as tokens:
@@ -91,6 +93,38 @@ class PermutationTests(unittest.TestCase):
         self.assertAlmostEqual(result['x']['probabilities']['a'], .6)
         self.assertAlmostEqual(result['x']['probabilities']['b'], .4)
         self.assertEqual(result['x']['value'], 'a')
+
+    def test_auto_balances_positions_and_neighbours(self):
+        for n in range(2, 10):
+            with self.subTest(n=n):
+                orders = _balanced_orders(n)
+                self.assertEqual(len(orders), n if n % 2 == 0 else 2 * n)
+                self.assertTrue(all(sorted(order) == list(range(n)) for order in orders))
+                positions = Counter((pos, item) for order in orders for pos, item in enumerate(order))
+                self.assertEqual(set(positions.values()), {len(orders) // n})
+                pairs = Counter(pair for order in orders for pair in zip(order, order[1:]))
+                self.assertEqual(len(pairs), n * (n - 1))
+                self.assertEqual(len(set(pairs.values())), 1)
+
+    def test_auto_does_not_depend_on_the_enum_order(self):
+        def value_orders(values):
+            d = Choice('q', dict(zip('ABCDEF', values)), permutations='auto')
+            return sorted(tuple(variant.choices.values()) for variant, _ in _choice_orderings(d, random.Random(0)))
+        self.assertEqual(value_orders(['a', 'b', 'c', 'd', 'e', 'f']), value_orders(['d', 'f', 'a', 'c', 'e', 'b']))
+        self.assertEqual(len(value_orders(['a', 'b', 'c', 'd', 'e', 'f'])), 6)
+
+    def test_auto_cancels_a_pure_position_bias(self):
+        client = TypeLLMClient()
+        client.sglang = DependencyFake()
+        biased = {65: math.log(.5), 66: math.log(.2), 67: math.log(.15), 68: math.log(.15)}
+        with patch.object(client.sglang, 'score_candidates_batch',
+                          side_effect=lambda prompts, ids: ([(biased, {}) for _ in prompts], 0.0)) as score:
+            result = client.generate(context='x', questions={'x': {
+                'type': 'string', 'enum': ['w', 'x', 'y', 'z'], 'permutations': 'auto',
+                'return_probabilities': True}})
+        self.assertEqual(len(score.call_args.args[0]), 4)
+        for probability in result['x']['probabilities'].values():
+            self.assertAlmostEqual(probability, 1 / 4)
 
     def test_one_matches_default(self):
         outputs = []

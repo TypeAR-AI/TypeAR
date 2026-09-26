@@ -701,12 +701,39 @@ def _decode_numeric_batch(
     return outputs  # type: ignore[return-value]
 
 
+def _balanced_orders(count: int) -> list[tuple[int, ...]]:
+    """A balanced Latin square (Williams design) on positions 0..count-1.
+
+    Every item takes every position equally often and follows every other item
+    equally often: count orders when count is even, 2*count when it is odd.
+    """
+    first = [0]
+    low, high = 1, count - 1
+    while len(first) < count:
+        first.append(low)
+        low += 1
+        if len(first) < count:
+            first.append(high)
+            high -= 1
+    rows = [tuple((item + shift) % count for item in first) for shift in range(count)]
+    if count % 2:
+        rows += [row[::-1] for row in rows]
+    return list(dict.fromkeys(rows))
+
+
 def _choice_orderings(decision, rng):
     """Rebind values to fixed control labels, sampling ranks without enumeration."""
     labels = list(decision.choices)
     values = list(decision.choices.values())
+    if decision.permutations == "auto" and len(values) > 1:
+        # Start from a canonical order so the result does not depend on the
+        # order the enum was written in, then balance positions and neighbours.
+        canonical = sorted(range(len(values)), key=lambda i: json.dumps(values[i]))
+        orders = [tuple(canonical[i] for i in row) for row in _balanced_orders(len(values))]
+        return [(replace(decision, choices=dict(zip(labels, (values[i] for i in order))),
+                         permutations=1), order) for order in orders]
     total = math.factorial(len(values))
-    count = total if decision.permutations == "all" else min(decision.permutations, total)
+    count = total if decision.permutations in ("all", "auto") else min(decision.permutations, total)
     if count == 1:
         return [(decision, tuple(range(len(values))))]
     if count == total:
